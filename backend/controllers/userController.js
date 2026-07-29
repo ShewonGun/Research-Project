@@ -1,0 +1,129 @@
+import User from "../models/User.js";
+import generateToken from "../utils/generateToken.js";
+
+// Shape a user document for API responses (never leak the password hash).
+const toPublicUser = (user) => ({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    phone: user.phone,
+    address: user.address,
+    accountNumber: user.accountNumber,
+    createdAt: user.createdAt,
+});
+
+// Register a new user
+export const registerUser = async (req, res) => {
+    try {
+        const { name, email, password, role, phone, address, accountNumber } = req.body;
+
+        const exists = await User.findOne({ email });
+        if (exists) {
+            return res.status(409).json({ message: "Email is already registered" });
+        }
+
+        const user = await User.create({
+            name,
+            email,
+            password,
+            role: role === "admin" ? "admin" : "user",
+            phone,
+            address,
+            accountNumber,
+        });
+
+        return res.status(201).json({
+            user: toPublicUser(user),
+            token: generateToken(user._id, user.role),
+        });
+    } catch (error) {
+        if (error.name === "ValidationError") {
+            return res.status(400).json({ message: error.message });
+        }
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// User Login
+export const loginUser = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // password has select:false, so request it explicitly.
+        const user = await User.findOne({ email }).select("+password");
+        if (!user || !(await user.matchPassword(password))) {
+            return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        return res.json({
+            user: toPublicUser(user),
+            token: generateToken(user._id, user.role),
+        });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Get the currently authenticated user's profile
+export const getProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        return res.json({ user: toPublicUser(user) });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Update the currently authenticated user's profile
+export const updateProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        const { name, phone, address, accountNumber, password } = req.body;
+
+        if (name !== undefined) user.name = name;
+        if (phone !== undefined) user.phone = phone;
+        if (address !== undefined) user.address = address;
+        if (accountNumber !== undefined) user.accountNumber = accountNumber;
+        if (password) user.password = password; // re-hashed by the pre-save hook
+
+        const updated = await user.save();
+        return res.json({ user: toPublicUser(updated) });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Get all users
+export const getUsers = async (req, res) => {
+    try {
+        const filter = {};
+        if (req.query.role) filter.role = req.query.role;
+        const users = await User.find(filter).sort({ createdAt: -1 });
+        return res.json({ count: users.length, users: users.map(toPublicUser) });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Get a single user by id
+export const getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+        return res.json({ user: toPublicUser(user) });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Delete a user
+export const deleteUser = async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.params.id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+        return res.json({ message: "User deleted" });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
