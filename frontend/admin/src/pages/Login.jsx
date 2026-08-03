@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FiDroplet, FiEye, FiEyeOff, FiAlertTriangle, FiLoader } from "react-icons/fi";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import waterPhoto1 from "../assets/Water-Photo-1.jpg";
 import waterPhoto2 from "../assets/Water-Photo-2.jpeg";
@@ -84,7 +85,7 @@ const Login = () => {
                 <div className="relative z-10 flex w-full flex-col justify-between p-10 text-white">
                     <div className="flex items-center gap-3">
                         <div >
-                            <WaterDropIcon className="h-6 w-6" />
+                            <FiDroplet className="h-6 w-6" />
                         </div>
                         <span className="text-xl font-semibold tracking-tight">AquaFlow</span>
                     </div>
@@ -126,7 +127,7 @@ const Login = () => {
                     {/* Mobile logo (brand panel hidden on small screens) */}
                     <div className="mb-8 flex items-center gap-3 lg:hidden">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-600 text-white">
-                            <WaterDropIcon className="h-5 w-5" />
+                            <FiDroplet className="h-5 w-5" />
                         </div>
                         <span className="text-lg font-semibold text-slate-800 dark:text-white">AquaFlow</span>
                     </div>
@@ -138,7 +139,7 @@ const Login = () => {
 
                     {error && (
                         <div className="mt-6 flex items-start gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                            <WarningIcon className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                            <FiAlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
                             <span>{error}</span>
                         </div>
                     )}
@@ -181,7 +182,7 @@ const Login = () => {
                                     className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                                     aria-label={showPassword ? "Hide password" : "Show password"}
                                 >
-                                    {showPassword ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                    {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
                                 </button>
                             </div>
                         </div>
@@ -191,7 +192,7 @@ const Login = () => {
                             disabled={loading}
                             className="flex w-full items-center justify-center gap-2 rounded-sm bg-linear-to-r from-cyan-500 to-blue-600 py-2.5 font-medium text-white shadow-lg shadow-blue-600/25 transition-all hover:from-cyan-600 hover:to-blue-700 hover:shadow-blue-600/40 focus:ring-4 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-blue-600/25"
                         >
-                            {loading && <SpinnerIcon className="h-5 w-5 animate-spin" />}
+                            {loading && <FiLoader className="h-5 w-5 animate-spin" />}
                             {loading ? "Signing in…" : "Sign in"}
                         </button>
                     </form>
@@ -211,35 +212,5 @@ const Login = () => {
         </div>
     );
 };
-
-/* --- Inline icons (no icon dependency) --- */
-const WaterDropIcon = (props) => (
-    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-        <path d="M12 2.5S5.5 9.4 5.5 14.2a6.5 6.5 0 1 0 13 0C18.5 9.4 12 2.5 12 2.5z" />
-    </svg>
-);
-const EyeIcon = (props) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-        <circle cx="12" cy="12" r="3" />
-    </svg>
-);
-const EyeOffIcon = (props) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-        <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M6.6 6.6A18.5 18.5 0 0 0 2 12s3.5 7 10 7a9.1 9.1 0 0 0 3.13-.55" />
-        <path d="M3 3l18 18" />
-    </svg>
-);
-const WarningIcon = (props) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-        <path d="M12 9v4M12 17h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.42 0z" />
-    </svg>
-);
-const SpinnerIcon = (props) => (
-    <svg viewBox="0 0 24 24" fill="none" {...props}>
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-    </svg>
-);
 
 export default Login;
