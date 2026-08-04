@@ -1,0 +1,221 @@
+import { useState, useEffect, useCallback } from "react";
+import { FiPlus, FiCreditCard, FiZap, FiDollarSign } from "react-icons/fi";
+import { apiFetch } from "../../lib/api.js";
+import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubscriptionModal.jsx";
+import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
+
+const filters = [
+    { key: "all", label: "All" },
+    { key: "active", label: "Active" },
+    { key: "exhausted", label: "Exhausted" },
+    { key: "expired", label: "Expired" },
+    { key: "cancelled", label: "Cancelled" },
+];
+
+const statusStyles = {
+    active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
+    exhausted: "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400",
+    expired: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+    cancelled: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+};
+
+const Subscriptions = () => {
+    const [subs, setSubs] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [filter, setFilter] = useState("all");
+    const [assignOpen, setAssignOpen] = useState(false);
+    const [cancelling, setCancelling] = useState(null);
+    const [cancelLoading, setCancelLoading] = useState(false);
+
+    const load = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
+        try {
+            const data = await apiFetch("/api/subscriptions");
+            setSubs(data.subscriptions || []);
+        } catch (err) {
+            if (!silent) setError(err.message);
+        } finally {
+            if (!silent) setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        load();
+        const id = setInterval(() => load(true), 8000);
+        return () => clearInterval(id);
+    }, [load]);
+
+    const confirmCancel = async () => {
+        if (!cancelling) return;
+        setCancelLoading(true);
+        try {
+            await apiFetch(`/api/subscriptions/${cancelling._id}`, { method: "DELETE" });
+            setCancelling(null);
+            await load();
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setCancelLoading(false);
+        }
+    };
+
+    const shown = filter === "all" ? subs : subs.filter((s) => s.status === filter);
+    const activeSubs = subs.filter((s) => s.status === "active");
+    const totalRemaining = activeSubs.reduce((sum, s) => sum + s.volumeRemaining, 0);
+    const revenue = subs.reduce((sum, s) => sum + (s.price || 0), 0);
+
+    return (
+        <div>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Subscriptions</h1>
+                    <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Prepaid plans across all devices.</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setAssignOpen(true)}
+                    className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                >
+                    <FiPlus className="h-4 w-4" /> Assign package
+                </button>
+            </div>
+
+            {/* Summary tiles */}
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Tile label="Active plans" value={activeSubs.length} icon={FiCreditCard} tone="emerald" />
+                <Tile label="Prepaid volume left" value={`${totalRemaining.toFixed(0)} L`} icon={FiZap} tone="sky" />
+                <Tile label="Total revenue" value={`Rs. ${revenue.toLocaleString()}`} icon={FiDollarSign} tone="violet" />
+            </div>
+
+            {/* Filter */}
+            <div className="mt-5 flex flex-wrap gap-1">
+                {filters.map((f) => (
+                    <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => setFilter(f.key)}
+                        className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                            filter === f.key
+                                ? "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400"
+                                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                        }`}
+                    >
+                        {f.label}
+                    </button>
+                ))}
+            </div>
+
+            {error && (
+                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
+                    {error}
+                </div>
+            )}
+
+            {/* Table */}
+            {loading ? (
+                <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+            ) : shown.length === 0 ? (
+                <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">No subscriptions here.</p>
+                </div>
+            ) : (
+                <div className="mt-4 overflow-x-auto rounded-sm border border-slate-200 dark:border-slate-800">
+                    <table className="w-full min-w-160 text-sm">
+                        <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                                <th className="px-4 py-2.5 font-medium">Device</th>
+                                <th className="px-4 py-2.5 font-medium">Package</th>
+                                <th className="px-4 py-2.5 font-medium">Balance</th>
+                                <th className="px-4 py-2.5 font-medium">Status</th>
+                                <th className="px-4 py-2.5 font-medium">Expires</th>
+                                <th className="px-4 py-2.5" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {shown.map((s) => {
+                                const ratio = Math.max(0, Math.min(1, s.volumeRemaining / s.volumeTotal));
+                                const low = s.status === "active" && ratio < 0.1;
+                                return (
+                                    <tr key={s._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-slate-900 dark:text-white">{s.device?.name || "—"}</p>
+                                            <p className="font-mono text-xs text-slate-400 dark:text-slate-500">{s.device?.deviceId}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.package?.name || "—"}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                                    <div
+                                                        className={`h-full rounded-full ${low ? "bg-amber-500" : s.status === "active" ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600"}`}
+                                                        style={{ width: `${ratio * 100}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                                    {s.volumeRemaining.toFixed(0)}/{s.volumeTotal.toLocaleString()} L
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${statusStyles[s.status]}`}>
+                                                {s.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
+                                            {s.expiresAt ? new Date(s.expiresAt).toLocaleDateString() : "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            {s.status === "active" && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCancelling(s)}
+                                                    className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            <AssignSubscriptionModal open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={load} />
+
+            <ConfirmationBox
+                open={!!cancelling}
+                title="Cancel subscription"
+                message={cancelling ? `Cancel the plan on "${cancelling.device?.name || cancelling.device?.deviceId}"? This closes the valve.` : ""}
+                confirmText="Cancel plan"
+                tone="danger"
+                loading={cancelLoading}
+                onConfirm={confirmCancel}
+                onCancel={() => setCancelling(null)}
+            />
+        </div>
+    );
+};
+
+const tones = {
+    sky: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
+    violet: "bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400",
+};
+
+const Tile = ({ label, value, icon: Icon, tone }) => (
+    <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+            <span className={`flex h-7 w-7 items-center justify-center rounded-md ${tones[tone]}`}>
+                <Icon className="h-4 w-4" />
+            </span>
+        </div>
+        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</p>
+    </div>
+);
+
+export default Subscriptions;

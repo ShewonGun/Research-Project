@@ -1,0 +1,82 @@
+import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import Login from './Pages/SharedPages/Login.jsx'
+import Signup from './Pages/SharedPages/Signup.jsx'
+
+// Lazy-load each role's tree so a household never downloads admin code (and vice-versa).
+const DashboardLayout = lazy(() => import('./Components/AdminComponents/DashboardLayout.jsx'))
+const Dashboard = lazy(() => import('./Pages/AdminPages/Dashboard.jsx'))
+const WaterPackages = lazy(() => import('./Pages/AdminPages/WaterPackages.jsx'))
+const Devices = lazy(() => import('./Pages/AdminPages/Devices.jsx'))
+const Subscriptions = lazy(() => import('./Pages/AdminPages/Subscriptions.jsx'))
+const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
+const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
+
+const UserLayout = lazy(() => import('./Components/UserComponents/UserLayout.jsx'))
+const Home = lazy(() => import('./Pages/UserPages/Home.jsx'))
+const Usage = lazy(() => import('./Pages/UserPages/Usage.jsx'))
+const Plans = lazy(() => import('./Pages/UserPages/Plans.jsx'))
+const Billing = lazy(() => import('./Pages/UserPages/Billing.jsx'))
+const Account = lazy(() => import('./Pages/UserPages/Account.jsx'))
+
+// The landing route for a role.
+const homeFor = (role) => (role === 'admin' ? '/dashboard' : '/app')
+
+// Require a logged-in user; optionally require a specific role.
+const RequireRole = ({ role, children }) => {
+  const token = localStorage.getItem('token')
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  if (!token) return <Navigate to="/login" replace />
+  if (role && user?.role !== role) return <Navigate to={homeFor(user?.role)} replace />
+  return children
+}
+
+const App = () => {
+  return (
+    <BrowserRouter>
+      <Suspense fallback={<div className="min-h-screen bg-slate-50 dark:bg-slate-950" />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+
+          {/* Admin console */}
+          <Route
+            path="/dashboard"
+            element={
+              <RequireRole role="admin">
+                <DashboardLayout />
+              </RequireRole>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="packages" element={<WaterPackages />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="subscriptions" element={<Subscriptions />} />
+            <Route path="billing" element={<AdminBilling />} />
+            <Route path="users" element={<Users />} />
+          </Route>
+
+          {/* Consumer app */}
+          <Route
+            path="/app"
+            element={
+              <RequireRole role="user">
+                <UserLayout />
+              </RequireRole>
+            }
+          >
+            <Route index element={<Home />} />
+            <Route path="usage" element={<Usage />} />
+            <Route path="plans" element={<Plans />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="account" element={<Account />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  )
+}
+
+export default App

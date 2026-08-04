@@ -16,7 +16,7 @@ const toPublicUser = (user) => ({
 // Register a new user
 export const registerUser = async (req, res) => {
     try {
-        const { name, email, password, role, phone, address, accountNumber } = req.body;
+        const { name, email, password, phone, address, accountNumber } = req.body;
 
         const exists = await User.findOne({ email });
         if (exists) {
@@ -27,7 +27,9 @@ export const registerUser = async (req, res) => {
             name,
             email,
             password,
-            role: role === "admin" ? "admin" : "user",
+            // Public sign-up is always a household account. `role` from the request
+            // body is ignored — admins are provisioned separately, never self-assigned.
+            role: "user",
             phone,
             address,
             accountNumber,
@@ -37,6 +39,30 @@ export const registerUser = async (req, res) => {
             user: toPublicUser(user),
             token: generateToken(user._id, user.role),
         });
+    } catch (error) {
+        if (error.name === "ValidationError") {
+            return res.status(400).json({ message: error.message });
+        }
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Create an admin account (only an existing admin may do this)
+// @route   POST /api/users/admins
+// @access  Private (admin)
+export const createAdmin = async (req, res) => {
+    try {
+        const { name, email, password, phone } = req.body;
+
+        const exists = await User.findOne({ email });
+        if (exists) {
+            return res.status(409).json({ message: "Email is already registered" });
+        }
+
+        const user = await User.create({ name, email, password, phone, role: "admin" });
+
+        // No token here — the current admin stays logged in; this just provisions the account.
+        return res.status(201).json({ user: toPublicUser(user) });
     } catch (error) {
         if (error.name === "ValidationError") {
             return res.status(400).json({ message: error.message });

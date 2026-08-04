@@ -4,6 +4,11 @@ import dotenv from "dotenv";
 import connectDB from "./config/dbConfig.js";
 import userRoutes from "./routes/userRoutes.js";
 import waterPackageRoutes from "./routes/waterPackageRoutes.js";
+import deviceRoutes from "./routes/deviceRoutes.js";
+import readingRoutes from "./routes/readingRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import tariffRoutes from "./routes/tariffRoutes.js";
+import billRoutes from "./routes/billRoutes.js";
 
 dotenv.config();
 
@@ -20,6 +25,11 @@ app.get("/", (req, res) => {
 
 app.use("/api/users", userRoutes);
 app.use("/api/water-packages", waterPackageRoutes);
+app.use("/api/devices", deviceRoutes);
+app.use("/api/readings", readingRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/tariff", tariffRoutes);
+app.use("/api/bills", billRoutes);
 
 const PORT = process.env.PORT || 5000;
 
