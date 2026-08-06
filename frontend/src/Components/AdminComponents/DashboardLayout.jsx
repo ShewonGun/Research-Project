@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { FiDroplet, FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiUsers, FiLogOut } from "react-icons/fi";
+import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiUsers, FiLogOut } from "react-icons/fi";
 import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
 import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
+import Logo from "../SharedComponents/Logo.jsx";
 
 const navItems = [
     { to: "/dashboard", label: "Overview", end: true, icon: FiGrid },
     { to: "/dashboard/packages", label: "Water Packages", icon: FiPackage },
-    { to: "/dashboard/devices", label: "Devices", icon: FiCpu },
+    { to: "/dashboard/devices", label: "Connections", icon: FiCpu },
     { to: "/dashboard/subscriptions", label: "Subscriptions", icon: FiCreditCard },
     { to: "/dashboard/billing", label: "Billing", icon: FiFileText },
+    { to: "/dashboard/alerts", label: "Leak Alerts", icon: FiAlertTriangle },
     { to: "/dashboard/users", label: "Users", icon: FiUsers },
 ];
 
@@ -31,10 +33,8 @@ const DashboardLayout = () => {
                 <div className="flex h-14 items-center gap-2 px-4">
                     {/* Brand */}
                     <div className="flex items-center gap-2">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-linear-to-br from-cyan-500 to-blue-600 text-white">
-                            <FiDroplet className="h-4 w-4" />
-                        </span>
-                        <span className="text-sm font-semibold text-slate-900 dark:text-white">AquaFlow</span>
+                        <Logo className="h-7 w-7" />
+                        <span className="text-md font-semibold text-slate-900 dark:text-white">AquaFlow</span>
                     </div>
 
                     {/* Right actions */}
@@ -65,7 +65,7 @@ const DashboardLayout = () => {
                             to={to}
                             end={end}
                             className={({ isActive }) =>
-                                `flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition ${
+                                `flex items-center gap-2.5 rounded-sm px-3 py-2 text-xs font-medium transition ${
                                     isActive
                                         ? "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400"
                                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"

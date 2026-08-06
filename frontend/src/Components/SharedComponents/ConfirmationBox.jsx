@@ -49,7 +49,7 @@ const ConfirmationBox = ({
                         type="button"
                         onClick={onCancel}
                         disabled={loading}
-                        className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="rounded-sm px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
                         {cancelText}
                     </button>
@@ -57,7 +57,7 @@ const ConfirmationBox = ({
                         type="button"
                         onClick={onConfirm}
                         disabled={loading}
-                        className={`rounded-md px-3.5 py-1.5 text-sm font-medium text-white transition disabled:opacity-60 ${confirmCls}`}
+                        className={`rounded-sm px-3.5 py-1.5 text-sm font-medium text-white transition disabled:opacity-60 ${confirmCls}`}
                     >
                         {loading ? "Please wait…" : confirmText}
                     </button>

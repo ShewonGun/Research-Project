@@ -10,6 +10,7 @@ const WaterPackages = lazy(() => import('./Pages/AdminPages/WaterPackages.jsx'))
 const Devices = lazy(() => import('./Pages/AdminPages/Devices.jsx'))
 const Subscriptions = lazy(() => import('./Pages/AdminPages/Subscriptions.jsx'))
 const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
+const AdminAlerts = lazy(() => import('./Pages/AdminPages/Alerts.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
 
 const UserLayout = lazy(() => import('./Components/UserComponents/UserLayout.jsx'))
@@ -18,6 +19,7 @@ const Usage = lazy(() => import('./Pages/UserPages/Usage.jsx'))
 const Plans = lazy(() => import('./Pages/UserPages/Plans.jsx'))
 const Billing = lazy(() => import('./Pages/UserPages/Billing.jsx'))
 const Account = lazy(() => import('./Pages/UserPages/Account.jsx'))
+const UserAlerts = lazy(() => import('./Pages/UserPages/Alerts.jsx'))
 
 // The landing route for a role.
 const homeFor = (role) => (role === 'admin' ? '/dashboard' : '/app')
@@ -53,6 +55,7 @@ const App = () => {
             <Route path="devices" element={<Devices />} />
             <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="billing" element={<AdminBilling />} />
+            <Route path="alerts" element={<AdminAlerts />} />
             <Route path="users" element={<Users />} />
           </Route>
 
@@ -70,6 +73,7 @@ const App = () => {
             <Route path="plans" element={<Plans />} />
             <Route path="billing" element={<Billing />} />
             <Route path="account" element={<Account />} />
+            <Route path="alerts" element={<UserAlerts />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/login" replace />} />

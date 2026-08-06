@@ -3,6 +3,7 @@ import Reading from "../models/Reading.js";
 import Device from "../models/Device.js";
 import Subscription from "../models/Subscription.js";
 import { getOrOpenBill, applyPostpaidEnforcement } from "../utils/postpaid.js";
+import { runLeakDetection } from "../utils/leakDetection.js";
 
 // Throttle flow to this % once the prepaid balance drops below LOW_BALANCE_RATIO.
 const LOW_BALANCE_RATIO = 0.1;
@@ -89,6 +90,9 @@ export const ingestReading = async (req, res) => {
             await enforceQuota(device, volume ?? 0);
         }
 
+        // Analyse the flow stream for leaks/bursts (may auto-shut on a burst).
+        await runLeakDetection(device, flowRate);
+
         // Return the EFFECTIVE valve command (both provider gate + household tap).
         return res.status(201).json({
             valveState: device.effectiveValveState,
@@ -120,6 +124,33 @@ export const getReadings = async (req, res) => {
             .limit(Math.min(Number(limit) || 100, 1000));
 
         return res.json({ count: readings.length, readings });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Network-wide daily usage (all devices) over the last N days
+// @route   GET /api/readings/network-usage?days=7
+// @access  Private (admin)
+export const getNetworkUsage = async (req, res) => {
+    try {
+        const windowDays = Math.min(Number(req.query.days) || 7, 90);
+        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+        const daily = await Reading.aggregate([
+            { $match: { timestamp: { $gte: since } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                    volume: { $sum: "$volume" },
+                },
+            },
+            { $sort: { _id: 1 } },
+            { $project: { _id: 0, date: "$_id", volume: 1 } },
+        ]);
+
+        const total = daily.reduce((sum, d) => sum + d.volume, 0);
+        return res.json({ days: windowDays, total, daily });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
     }

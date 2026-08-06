@@ -9,6 +9,7 @@ import readingRoutes from "./routes/readingRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import tariffRoutes from "./routes/tariffRoutes.js";
 import billRoutes from "./routes/billRoutes.js";
+import alertRoutes from "./routes/alertRoutes.js";
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use("/api/readings", readingRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/tariff", tariffRoutes);
 app.use("/api/bills", billRoutes);
+app.use("/api/alerts", alertRoutes);
 
 const PORT = process.env.PORT || 5000;
 

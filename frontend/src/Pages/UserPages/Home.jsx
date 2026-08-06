@@ -6,8 +6,9 @@ import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
 import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
 import CumulativeChart from "../../Components/SharedComponents/CumulativeChart.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
-import WaterGauge from "../../Components/UserComponents/WaterGauge.jsx";
+import WaterPulse from "../../Components/UserComponents/WaterPulse.jsx";
 import BalanceDrop from "../../Components/UserComponents/BalanceDrop.jsx";
+import LeakCard from "../../Components/UserComponents/LeakCard.jsx";
 
 const statusStyles = {
     open: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
@@ -19,7 +20,7 @@ const statusText = { open: "Water on", throttled: "Restricted", closed: "Shut of
 const money = (n) => `Rs. ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const Home = () => {
-    const { device, mode, sub, bill, estimate, bills, usage, loading, setValve } = useMyWater();
+    const { device, mode, sub, bill, estimate, bills, usage, alerts, loading, setValve, acknowledgeAlert } = useMyWater();
     const user = JSON.parse(localStorage.getItem("user") || "null");
 
     if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
@@ -70,10 +71,37 @@ const Home = () => {
                 </div>
             )}
 
+            {/* Leak / burst alerts */}
+            {(alerts || [])
+                .filter((a) => a.status === "active")
+                .map((a) => (
+                    <div
+                        key={a._id}
+                        className={`mt-5 flex items-start gap-2 rounded-md px-3.5 py-2.5 text-sm ${
+                            a.severity === "critical"
+                                ? "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                                : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                        }`}
+                    >
+                        <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                            <p className="font-semibold">{a.type === "burst" ? "Burst detected" : "Possible micro-leak"}</p>
+                            <p className="mt-0.5">{a.message}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => acknowledgeAlert(a._id)}
+                            className="shrink-0 text-xs font-medium underline hover:no-underline"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                ))}
+
             {/* Grid */}
             <div className="mt-5 grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
                 {/* Balance (prepaid) / current bill (postpaid) */}
-                <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 md:col-span-2">
+                <div className="flex flex-col rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center gap-2">
                         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
                             {postpaid ? <FiFileText className="h-4 w-4" /> : <FiDroplet className="h-4 w-4" />}
@@ -121,16 +149,19 @@ const Home = () => {
                     )}
                 </div>
 
-                {/* Water control — creative valve meter */}
+                {/* Water control — water flow orb */}
                 <div className="flex flex-col rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Water supply</p>
                     <div className="flex flex-1 items-center justify-center py-2">
-                        <WaterGauge
+                        <WaterPulse
                             device={device}
                             onToggle={() => setValve(device.userValveState === "closed" ? "open" : "closed")}
                         />
                     </div>
                 </div>
+
+                {/* Leak detection */}
+                <LeakCard />
 
                 {/* Usage summary */}
                 <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 md:col-span-3">

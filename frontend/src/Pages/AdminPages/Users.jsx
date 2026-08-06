@@ -3,6 +3,9 @@ import { FiUserPlus, FiUsers, FiShield, FiHome } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import AddAdminModal from "../../Components/AdminComponents/AddAdminModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
+import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+
+const PAGE_SIZE = 10;
 
 const filters = [
     { key: "all", label: "All" },
@@ -16,9 +19,12 @@ const Users = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [filter, setFilter] = useState("all");
+    const [page, setPage] = useState(1);
     const [addOpen, setAddOpen] = useState(false);
     const [deleting, setDeleting] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    useEffect(() => setPage(1), [filter]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -52,6 +58,7 @@ const Users = () => {
     };
 
     const shown = filter === "all" ? users : users.filter((u) => u.role === filter);
+    const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const admins = users.filter((u) => u.role === "admin").length;
     const households = users.length - admins;
 
@@ -123,7 +130,7 @@ const Users = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {shown.map((u) => (
+                            {paged.map((u) => (
                                 <tr key={u._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2.5">
@@ -173,6 +180,8 @@ const Users = () => {
                     </table>
                 </div>
             )}
+
+            <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
 
             <AddAdminModal open={addOpen} onClose={() => setAddOpen(false)} onSaved={load} />
 

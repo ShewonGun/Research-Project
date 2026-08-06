@@ -1,80 +1,75 @@
-import { FiDroplet, FiClock, FiZap, FiCheck } from "react-icons/fi";
+import { FiDroplet, FiCheck } from "react-icons/fi";
 
-// A creative prepaid-plan card: a gradient "water" header shows the litres with
-// a wave cutting into the body, then the price, per-litre value, validity, and a
-// buy button. `highlight` badges the best-value plan.
+// A prepaid-plan card built from the site's own design language: a sky icon-chip
+// header, litres as the hero, a tidy details list, and a clean sky button.
+// `highlight` marks the best-value plan.
 const PlanCard = ({ pkg, disabled, buying, highlight, onBuy }) => {
     const perLiter = pkg.volumeLiters ? pkg.price / pkg.volumeLiters : 0;
 
     return (
         <div
-            className={`group relative flex flex-col overflow-hidden rounded-md bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900 ${
-                highlight
-                    ? "ring-2 ring-sky-400 dark:ring-sky-500"
-                    : "ring-1 ring-slate-200 dark:ring-slate-800"
+            className={`flex flex-col rounded-sm border bg-white p-5 transition hover:shadow-sm dark:bg-slate-900 ${
+                highlight ? "border-sky-300 ring-1 ring-sky-200 dark:border-sky-800 dark:ring-sky-900" : "border-slate-200 dark:border-slate-800"
             }`}
         >
-            {highlight && (
-                <span className="absolute right-3 top-3 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-600 shadow-sm dark:bg-slate-900/80 dark:text-sky-400">
-                    Best value
-                </span>
-            )}
-
-            {/* Water header */}
-            <div className="relative h-24 overflow-hidden bg-linear-to-br from-sky-500 to-cyan-500">
-                <FiDroplet className="pointer-events-none absolute -right-3 -top-4 h-24 w-24 text-white/15" />
-                <div className="relative flex h-full flex-col justify-center px-4">
-                    <p className="truncate text-xs font-medium text-white/80">{pkg.name}</p>
-                    <div className="mt-0.5 flex items-baseline gap-1 text-white">
-                        <span className="text-3xl font-bold tracking-tight">{pkg.volumeLiters.toLocaleString()}</span>
-                        <span className="text-sm font-medium text-white/80">litres</span>
-                    </div>
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
+                        <FiDroplet className="h-4 w-4" />
+                    </span>
+                    <span className="truncate text-sm font-medium text-slate-500 dark:text-slate-400">{pkg.name}</span>
                 </div>
-                {/* Wave cut into the body */}
-                <svg className="absolute inset-x-0 bottom-0 h-4 w-full text-white dark:text-slate-900" viewBox="0 0 200 20" preserveAspectRatio="none">
-                    <path d="M0,20 L0,11 q25,-11 50,0 t50,0 t50,0 t50,0 L200,20 Z" fill="currentColor" />
-                </svg>
+                {highlight && (
+                    <span className="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
+                        Best value
+                    </span>
+                )}
             </div>
 
-            {/* Body */}
-            <div className="flex flex-1 flex-col p-4">
-                <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">Rs.</span>
-                    <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{pkg.price.toLocaleString()}</span>
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-1">
-                        <FiClock className="h-3.5 w-3.5" />
-                        {pkg.validityDays} days
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <FiZap className="h-3.5 w-3.5" />
-                        Rs {perLiter.toFixed(2)}/L
-                    </span>
-                </div>
-
-                <button
-                    type="button"
-                    disabled={disabled || buying}
-                    onClick={onBuy}
-                    className={`mt-4 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition disabled:cursor-not-allowed ${
-                        disabled
-                            ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
-                            : "bg-linear-to-r from-sky-600 to-cyan-600 text-white shadow-sm shadow-sky-600/20 hover:brightness-105 disabled:opacity-60"
-                    }`}
-                >
-                    {buying ? (
-                        "Processing…"
-                    ) : disabled ? (
-                        <>
-                            <FiCheck className="h-4 w-4" /> Current plan active
-                        </>
-                    ) : (
-                        "Buy plan"
-                    )}
-                </button>
+            {/* Litres hero */}
+            <div className="mt-4 flex items-baseline gap-1.5">
+                <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{pkg.volumeLiters.toLocaleString()}</span>
+                <span className="text-sm text-slate-400 dark:text-slate-500">litres</span>
             </div>
+
+            {/* Details */}
+            <dl className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                    <dt className="text-slate-500 dark:text-slate-400">Price</dt>
+                    <dd className="font-semibold text-slate-900 dark:text-white">Rs. {pkg.price.toLocaleString()}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                    <dt className="text-slate-500 dark:text-slate-400">Validity</dt>
+                    <dd className="text-slate-700 dark:text-slate-300">{pkg.validityDays} days</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                    <dt className="text-slate-500 dark:text-slate-400">Per litre</dt>
+                    <dd className="text-slate-700 dark:text-slate-300">Rs {perLiter.toFixed(2)}</dd>
+                </div>
+            </dl>
+
+            {/* Buy */}
+            <button
+                type="button"
+                disabled={disabled || buying}
+                onClick={onBuy}
+                className={`mt-5 flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition disabled:cursor-not-allowed ${
+                    disabled
+                        ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+                        : "bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60"
+                }`}
+            >
+                {buying ? (
+                    "Processing…"
+                ) : disabled ? (
+                    <>
+                        <FiCheck className="h-4 w-4" /> Plan active
+                    </>
+                ) : (
+                    "Buy plan"
+                )}
+            </button>
         </div>
     );
 };

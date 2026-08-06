@@ -9,16 +9,18 @@ const BalanceDrop = ({ remaining, total, ratio, low, expiresAt }) => {
     const water = low ? "#f59e0b" : "#0ea5e9";
 
     return (
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-stretch">
+        <div className="mt-4 flex flex-1 flex-col gap-4">
             <style>{`
                 @keyframes bdFlow { to { transform: translateX(-50%); } }
+                @keyframes bdRise { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: .6; } 100% { transform: translateY(-70px); opacity: 0; } }
                 .bd-wave1 { animation: bdFlow 3s linear infinite; }
                 .bd-wave2 { animation: bdFlow 5s linear infinite; }
-                @media (prefers-reduced-motion: reduce) { .bd-wave1,.bd-wave2 { animation: none; } }
+                .bd-bubble { animation: bdRise ease-in infinite; }
+                @media (prefers-reduced-motion: reduce) { .bd-wave1,.bd-wave2,.bd-bubble { animation: none; } }
             `}</style>
 
             {/* Figures */}
-            <div className="flex flex-col justify-center sm:w-36 sm:shrink-0">
+            <div className="flex flex-col justify-center">
                 <div className="flex items-baseline gap-1.5">
                     <span className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">{Number(remaining).toFixed(0)}</span>
                     <span className="text-sm text-slate-400 dark:text-slate-500">L</span>
@@ -59,6 +61,22 @@ const BalanceDrop = ({ remaining, total, ratio, low, expiresAt }) => {
                     <svg className="bd-wave1 absolute -top-3.25 left-0 h-4 w-[200%]" viewBox="0 0 200 20" preserveAspectRatio="none">
                         <path d="M0,10 q25,8 50,0 t50,0 t50,0 t50,0 L200,20 L0,20 Z" fill={water} />
                     </svg>
+
+                    {/* Rising bubbles */}
+                    {clamped > 0 &&
+                        [
+                            { x: "12%", s: 5, dur: "4s", d: "0s" },
+                            { x: "28%", s: 3, dur: "3.2s", d: "1.4s" },
+                            { x: "48%", s: 6, dur: "4.6s", d: "0.6s" },
+                            { x: "66%", s: 4, dur: "3.6s", d: "2.1s" },
+                            { x: "84%", s: 3, dur: "4.2s", d: "1s" },
+                        ].map((b, i) => (
+                            <span
+                                key={i}
+                                className="bd-bubble absolute bottom-1 rounded-full bg-white/40"
+                                style={{ left: b.x, width: b.s, height: b.s, animationDuration: b.dur, animationDelay: b.d }}
+                            />
+                        ))}
                 </motion.div>
 
                 {/* Corner reading */}

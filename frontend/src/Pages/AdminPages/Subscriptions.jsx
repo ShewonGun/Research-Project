@@ -3,6 +3,9 @@ import { FiPlus, FiCreditCard, FiZap, FiDollarSign } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubscriptionModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
+import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+
+const PAGE_SIZE = 10;
 
 const filters = [
     { key: "all", label: "All" },
@@ -24,9 +27,12 @@ const Subscriptions = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [filter, setFilter] = useState("all");
+    const [page, setPage] = useState(1);
     const [assignOpen, setAssignOpen] = useState(false);
     const [cancelling, setCancelling] = useState(null);
     const [cancelLoading, setCancelLoading] = useState(false);
+
+    useEffect(() => setPage(1), [filter]);
 
     const load = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -61,6 +67,7 @@ const Subscriptions = () => {
     };
 
     const shown = filter === "all" ? subs : subs.filter((s) => s.status === filter);
+    const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const activeSubs = subs.filter((s) => s.status === "active");
     const totalRemaining = activeSubs.reduce((sum, s) => sum + s.volumeRemaining, 0);
     const revenue = subs.reduce((sum, s) => sum + (s.price || 0), 0);
@@ -134,7 +141,7 @@ const Subscriptions = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {shown.map((s) => {
+                            {paged.map((s) => {
                                 const ratio = Math.max(0, Math.min(1, s.volumeRemaining / s.volumeTotal));
                                 const low = s.status === "active" && ratio < 0.1;
                                 return (
@@ -183,6 +190,8 @@ const Subscriptions = () => {
                     </table>
                 </div>
             )}
+
+            <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
 
             <AssignSubscriptionModal open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={load} />
 

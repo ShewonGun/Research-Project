@@ -50,7 +50,7 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">Register device</h2>
+                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">Register connection</h2>
                     <button
                         type="button"
                         onClick={onClose}

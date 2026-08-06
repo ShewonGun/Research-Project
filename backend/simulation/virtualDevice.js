@@ -19,11 +19,26 @@ dotenv.config();
 const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 5000}`;
 const deviceId = process.argv[2];
 const intervalMs = Number(process.argv[3]) || 3000;
+// Optional 4th arg forces one behaviour (good for demoing leak/burst detection).
+const scenarioArg = (process.argv[4] || "random").toLowerCase();
 
 if (!deviceId) {
-    console.error("Usage: node simulation/virtualDevice.js <deviceId> [intervalMs]");
+    console.error("Usage: node simulation/virtualDevice.js <deviceId> [intervalMs] [scenario]");
+    console.error("  scenario: random (default) | idle | normal | refill | leak | burst");
     process.exit(1);
 }
+
+// Map a scenario arg to a pattern name (random = the weighted mix).
+const forcedPattern = {
+    idle: "idle",
+    normal: "normal-use",
+    "normal-use": "normal-use",
+    refill: "tank-refill",
+    "tank-refill": "tank-refill",
+    leak: "micro-leak",
+    "micro-leak": "micro-leak",
+    burst: "burst",
+}[scenarioArg];
 
 // Flow profiles in litres/minute. Each tick picks behaviour, then we convert
 // the flow rate over the interval into a volume for that sample.
@@ -49,8 +64,10 @@ const rand = (base, jitter) => Math.max(0, base + (Math.random() * 2 - 1) * jitt
 let valveState = "open";
 let throttlePercent = 100;
 
+const byName = (name) => patterns.find((p) => p.name === name) || patterns[0];
+
 const tick = async () => {
-    const pattern = pickPattern();
+    const pattern = forcedPattern ? byName(forcedPattern) : pickPattern();
     let flowRate = rand(pattern.base, pattern.jitter);
 
     // Apply the last valve command from the server.
@@ -86,6 +103,8 @@ const tick = async () => {
     }
 };
 
-console.log(`Virtual device "${deviceId}" → ${API_URL}  (every ${intervalMs}ms). Ctrl+C to stop.`);
+console.log(
+    `Virtual device "${deviceId}" → ${API_URL}  (every ${intervalMs}ms, scenario: ${forcedPattern || "random"}). Ctrl+C to stop.`
+);
 tick();
 setInterval(tick, intervalMs);

@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { FiPlus, FiTrash2, FiPlayCircle, FiSave } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
+import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+
+const PAGE_SIZE = 10;
 
 const statusStyles = {
     open: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
@@ -22,6 +25,7 @@ const Billing = () => {
     const [confirmRun, setConfirmRun] = useState(false);
     const [running, setRunning] = useState(false);
     const [runResult, setRunResult] = useState("");
+    const [page, setPage] = useState(1);
 
     const load = useCallback(async () => {
         try {
@@ -99,9 +103,15 @@ const Billing = () => {
 
     if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
 
+    const outstanding = bills.filter((b) => b.status === "unpaid" || b.status === "overdue");
+    const outstandingTotal = outstanding.reduce((s, b) => s + (b.amount || 0), 0);
+    const collected = bills.filter((b) => b.status === "paid").reduce((s, b) => s + (b.amount || 0), 0);
+    const paged = bills.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
     return (
-        <div className="max-w-4xl">
-            <div className="flex items-start justify-between gap-3">
+        <div>
+            {/* Header */}
+            <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Postpaid Billing</h1>
                     <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
@@ -111,11 +121,18 @@ const Billing = () => {
                 <button
                     type="button"
                     onClick={() => setConfirmRun(true)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md bg-sky-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                    className="flex shrink-0 items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
                     <FiPlayCircle className="h-4 w-4" />
                     Run billing
                 </button>
+            </div>
+
+            {/* Summary tiles */}
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Tile label="Outstanding" value={money(outstandingTotal)} icon={FiDollarSign} tone="red" />
+                <Tile label="Collected" value={money(collected)} icon={FiCheckCircle} tone="emerald" />
+                <Tile label="Open bills" value={outstanding.length} icon={FiFileText} tone="sky" />
             </div>
 
             {error && (
@@ -209,42 +226,61 @@ const Billing = () => {
             <div className="mt-6">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Recent bills</h2>
                 {bills.length === 0 ? (
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No bills yet. Run billing to close the first cycles.</p>
+                    <div className="mt-3 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No bills yet. Run billing to close the first cycles.</p>
+                    </div>
                 ) : (
-                    <div className="mt-3 overflow-hidden rounded-sm border border-slate-200 dark:border-slate-800">
-                        {bills.map((b) => (
-                            <div
-                                key={b._id}
-                                className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3 last:border-0 dark:border-slate-800 dark:bg-slate-900"
-                            >
-                                <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
-                                        {b.device?.name || "Device"} <span className="font-mono text-xs text-slate-400">{b.device?.deviceId}</span>
-                                    </p>
-                                    <p className="text-xs text-slate-400 dark:text-slate-500">
-                                        {b.status === "open"
-                                            ? `${(b.volumeUsed || 0).toFixed(0)} L this cycle`
-                                            : `${money(b.amount)} · ${b.units} units${b.dueDate ? ` · due ${new Date(b.dueDate).toLocaleDateString()}` : ""}`}
-                                    </p>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${statusStyles[b.status]}`}>
-                                        {b.status}
-                                    </span>
-                                    {(b.status === "unpaid" || b.status === "overdue") && (
-                                        <button
-                                            type="button"
-                                            onClick={() => markPaid(b._id)}
-                                            className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                                        >
-                                            Mark paid
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                    <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200 dark:border-slate-800">
+                        <table className="w-full min-w-160 text-sm">
+                            <thead>
+                                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                                    <th className="px-4 py-2.5 font-medium">Device</th>
+                                    <th className="px-4 py-2.5 font-medium">Amount</th>
+                                    <th className="px-4 py-2.5 font-medium">Units</th>
+                                    <th className="px-4 py-2.5 font-medium">Due</th>
+                                    <th className="px-4 py-2.5 font-medium">Status</th>
+                                    <th className="px-4 py-2.5" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paged.map((b) => (
+                                    <tr key={b._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-slate-900 dark:text-white">{b.device?.name || "—"}</p>
+                                            <p className="font-mono text-xs text-slate-400 dark:text-slate-500">{b.device?.deviceId}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                                            {b.status === "open" ? (
+                                                <span className="text-slate-400 dark:text-slate-500">{(b.volumeUsed || 0).toFixed(0)} L so far</span>
+                                            ) : (
+                                                money(b.amount)
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{b.units != null ? b.units : "—"}</td>
+                                        <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
+                                            {b.dueDate ? new Date(b.dueDate).toLocaleDateString() : "—"}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${statusStyles[b.status]}`}>{b.status}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            {(b.status === "unpaid" || b.status === "overdue") && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => markPaid(b._id)}
+                                                    className="text-xs font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
+                                                >
+                                                    Mark paid
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
+                <Pagination page={page} pageSize={PAGE_SIZE} total={bills.length} onChange={setPage} />
             </div>
 
             <ConfirmationBox
@@ -260,6 +296,24 @@ const Billing = () => {
         </div>
     );
 };
+
+const tones = {
+    red: "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400",
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
+    sky: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
+};
+
+const Tile = ({ label, value, icon: Icon, tone }) => (
+    <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+            <span className={`flex h-7 w-7 items-center justify-center rounded-md ${tones[tone]}`}>
+                <Icon className="h-4 w-4" />
+            </span>
+        </div>
+        <p className="mt-2 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</p>
+    </div>
+);
 
 const inputCls =
     "rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white";
