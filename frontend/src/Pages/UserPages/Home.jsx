@@ -9,6 +9,7 @@ import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterPulse from "../../Components/UserComponents/WaterPulse.jsx";
 import BalanceDrop from "../../Components/UserComponents/BalanceDrop.jsx";
 import LeakCard from "../../Components/UserComponents/LeakCard.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const statusStyles = {
     open: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
@@ -23,7 +24,7 @@ const Home = () => {
     const { device, mode, sub, bill, estimate, bills, usage, alerts, loading, setValve, acknowledgeAlert } = useMyWater();
     const user = JSON.parse(localStorage.getItem("user") || "null");
 
-    if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
+    if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
 
     const postpaid = mode === "postpaid";

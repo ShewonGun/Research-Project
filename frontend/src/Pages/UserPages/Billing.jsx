@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FiFileText, FiDroplet, FiClock, FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const statusStyles = {
     unpaid: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
@@ -17,7 +18,7 @@ const Billing = () => {
     const [payingId, setPayingId] = useState(null);
     const [error, setError] = useState("");
 
-    if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
+    if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
 
     if (mode !== "postpaid") {

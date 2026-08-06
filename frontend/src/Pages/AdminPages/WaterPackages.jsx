@@ -4,15 +4,12 @@ import { apiFetch } from "../../lib/api.js";
 import WaterPackageCard from "../../Components/AdminComponents/WaterPackageCard.jsx";
 import AddWaterPackageModal from "../../Components/AdminComponents/AddWaterPackageModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
-import Pagination from "../../Components/SharedComponents/Pagination.jsx";
-
-const PAGE_SIZE = 10;
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const WaterPackages = () => {
     const [packages, setPackages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [page, setPage] = useState(1);
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null); // package pending delete confirmation
@@ -59,6 +56,8 @@ const WaterPackages = () => {
         }
     };
 
+    if (loading) return <WaterLoader center />;
+
     return (
         <div>
             {/* Header */}
@@ -84,9 +83,7 @@ const WaterPackages = () => {
                 </div>
             )}
 
-            {loading ? (
-                <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-            ) : packages.length === 0 ? (
+            {packages.length === 0 ? (
                 <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
                     <p className="text-sm text-slate-500 dark:text-slate-400">No packages yet.</p>
                     <button
@@ -98,14 +95,11 @@ const WaterPackages = () => {
                     </button>
                 </div>
             ) : (
-                <>
-                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-                        {packages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((pkg) => (
-                            <WaterPackageCard key={pkg._id} pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
-                        ))}
-                    </div>
-                    <Pagination page={page} pageSize={PAGE_SIZE} total={packages.length} onChange={setPage} />
-                </>
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                    {packages.map((pkg) => (
+                        <WaterPackageCard key={pkg._id} pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
+                    ))}
+                </div>
             )}
 
             <AddWaterPackageModal

@@ -21,7 +21,11 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
     const [detailOpen, setDetailOpen] = useState(false);
 
     return (
-        <div className="flex flex-col rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            {/* Top accent line */}
+            <div className="h-0.5 bg-linear-to-r from-cyan-500 to-blue-600" />
+
+            <div className="flex flex-col p-4">
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
@@ -48,7 +52,7 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
             </div>
 
             {/* Key facts */}
-            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="mt-4 grid grid-cols-2 gap-2">
                 <Meta label="Owner" value={device.owner?.name || "Unassigned"} muted={!device.owner} />
                 <Meta label="Billing" value={device.billingMode} capitalize />
                 <Meta label="Location" value={device.location || "—"} />
@@ -80,12 +84,13 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
                 onClose={() => setDetailOpen(false)}
                 onUpdated={onUpdated}
             />
+            </div>
         </div>
     );
 };
 
 const Meta = ({ label, value, muted, capitalize }) => (
-    <div className="min-w-0">
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/30">
         <p className="text-[11px] text-slate-400 dark:text-slate-500">{label}</p>
         <p
             className={`mt-0.5 truncate text-xs font-medium ${capitalize ? "capitalize " : ""}${

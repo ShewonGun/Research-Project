@@ -1,5 +1,6 @@
 import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
 import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
@@ -9,7 +10,7 @@ import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 const Usage = () => {
     const { device, sub, usage, loading } = useMyWater();
 
-    if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
+    if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
 
     const daily = usage?.daily || [];

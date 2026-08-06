@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiUsers, FiLogOut } from "react-icons/fi";
+import { useState, useEffect } from "react";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiUsers, FiLogOut, FiMenu, FiX } from "react-icons/fi";
 import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
 import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
 import Logo from "../SharedComponents/Logo.jsx";
@@ -17,8 +17,15 @@ const navItems = [
 
 const DashboardLayout = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const user = JSON.parse(localStorage.getItem("user") || "null");
     const [confirmLogout, setConfirmLogout] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    // Close the mobile drawer on navigation.
+    useEffect(() => {
+        setMenuOpen(false);
+    }, [location.pathname]);
 
     const handleLogout = () => {
         localStorage.removeItem("token");
@@ -26,61 +33,111 @@ const DashboardLayout = () => {
         navigate("/login", { replace: true });
     };
 
+    const linkClass = ({ isActive }) =>
+        `flex items-center gap-2.5 rounded-sm px-3 py-2 text-xs font-medium transition ${
+            isActive
+                ? "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+        }`;
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-            {/* Top navbar */}
-            <header className="fixed inset-x-0 top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
-                <div className="flex h-14 items-center gap-2 px-4">
-                    {/* Brand */}
+            {/* Mobile backdrop */}
+            <div
+                className={`fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity md:hidden ${
+                    menuOpen ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+                onClick={() => setMenuOpen(false)}
+                aria-hidden="true"
+            />
+
+            {/* Sidebar — full height, owns the brand; drawer on mobile, fixed on desktop */}
+            <aside
+                className={`fixed inset-y-0 left-0 z-50 flex w-56 flex-col border-r border-slate-200 bg-white transition-transform dark:border-slate-800 dark:bg-slate-900 md:z-30 md:translate-x-0 ${
+                    menuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+                }`}
+            >
+                {/* Brand header */}
+                <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
                     <div className="flex items-center gap-2">
                         <Logo className="h-7 w-7" />
                         <span className="text-md font-semibold text-slate-900 dark:text-white">AquaFlow</span>
                     </div>
-
-                    {/* Right actions */}
-                    <div className="ml-auto flex items-center gap-2">
-                        <span className="hidden text-sm text-slate-500 dark:text-slate-400 sm:block">
-                            {user?.name || "Admin"}
-                        </span>
-                        <ThemeToggle />
-                        <button
-                            type="button"
-                            onClick={() => setConfirmLogout(true)}
-                            aria-label="Log out"
-                            title="Log out"
-                            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                        >
-                            <FiLogOut className="h-3 w-3" />
-                        </button>
-                    </div>
+                    {/* Close (mobile only) */}
+                    <button
+                        type="button"
+                        onClick={() => setMenuOpen(false)}
+                        aria-label="Close menu"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 md:hidden dark:text-slate-400 dark:hover:bg-slate-800"
+                    >
+                        <FiX className="h-5 w-5" />
+                    </button>
                 </div>
-            </header>
 
-            {/* Sidebar */}
-            <aside className="fixed bottom-0 left-0 top-14 hidden w-52 border-r border-slate-200 bg-white p-3 md:block dark:border-slate-800 dark:bg-slate-900">
-                <nav className="flex flex-col gap-1">
+                {/* Nav */}
+                <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
                     {navItems.map(({ to, label, end, icon: Icon }) => (
-                        <NavLink
-                            key={to}
-                            to={to}
-                            end={end}
-                            className={({ isActive }) =>
-                                `flex items-center gap-2.5 rounded-sm px-3 py-2 text-xs font-medium transition ${
-                                    isActive
-                                        ? "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400"
-                                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                                }`
-                            }
-                        >
+                        <NavLink key={to} to={to} end={end} className={linkClass}>
                             <Icon className="h-4 w-4" />
                             {label}
                         </NavLink>
                     ))}
                 </nav>
+
+                {/* Log out (bottom of sidebar) */}
+                <div className="shrink-0 border-t border-slate-200 p-3 dark:border-slate-800">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setMenuOpen(false);
+                            setConfirmLogout(true);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                    >
+                        <FiLogOut className="h-4 w-4" />
+                        Log out
+                    </button>
+                </div>
             </aside>
 
-            {/* Page content (pt-20 clears the fixed navbar) */}
-            <main className="p-6 pt-20 md:pl-58">
+            {/* Top bar — spans the content area only (right of the sidebar on desktop) */}
+            <header className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur-md md:left-56 dark:border-slate-800 dark:bg-slate-900/80">
+                <div className="flex h-14 items-center gap-2 px-4">
+                    {/* Hamburger (mobile) */}
+                    <button
+                        type="button"
+                        onClick={() => setMenuOpen(true)}
+                        aria-label="Open menu"
+                        className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100 md:hidden dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                        <FiMenu className="h-5 w-5" />
+                    </button>
+
+                    {/* Right actions */}
+                    <div className="ml-auto flex items-center gap-2">
+                        <ThemeToggle />
+                        <NavLink
+                            to="/dashboard/profile"
+                            className={({ isActive }) =>
+                                `flex items-center gap-2 rounded-md py-1 pl-1 pr-2 transition ${
+                                    isActive
+                                        ? "bg-sky-50 dark:bg-sky-950/50"
+                                        : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                                }`
+                            }
+                            title="Profile"
+                        >
+                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-br from-cyan-500 to-blue-600 text-[11px] font-semibold text-white">
+                                {(user?.name?.trim()?.[0] || "A").toUpperCase()}
+                            </span>
+                            <span className="hidden text-sm text-slate-600 dark:text-slate-300 sm:block">{user?.name || "Admin"}</span>
+                        </NavLink>
+                    </div>
+                </div>
+            </header>
+
+            {/* Page content */}
+            <main className="p-6 pt-20 md:pl-62">
                 <Outlet />
             </main>
 

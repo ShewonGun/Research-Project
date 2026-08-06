@@ -1,7 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { FiWifi, FiAlertTriangle, FiCreditCard, FiDollarSign, FiArrowRight, FiAlertOctagon, FiCheckCircle } from "react-icons/fi";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import {
+    FiWifi,
+    FiAlertTriangle,
+    FiCreditCard,
+    FiDollarSign,
+    FiArrowRight,
+    FiAlertOctagon,
+    FiCheckCircle,
+    FiDroplet,
+    FiClock,
+} from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useChartTheme } from "../../Components/SharedComponents/chartTheme.js";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 
 const money = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -49,12 +61,42 @@ const Dashboard = () => {
 
     const { devices, alerts, subs, bills, usage } = data;
     const online = devices.filter((d) => d.status === "online").length;
+    const offline = devices.length - online;
     const activeLeaks = alerts.filter((a) => a.status === "active").length;
     const activePlans = subs.filter((s) => s.status === "active").length;
     const outstanding = bills
         .filter((b) => b.status === "unpaid" || b.status === "overdue")
         .reduce((sum, b) => sum + (b.amount || 0), 0);
+    const collected = bills.filter((b) => b.status === "paid").reduce((sum, b) => sum + (b.amount || 0), 0);
     const recentAlerts = alerts.slice(0, 5);
+
+    // Billing mix (postpaid is opt-in; everything else is prepaid).
+    const postpaid = devices.filter((d) => d.billingMode === "postpaid").length;
+    const prepaid = devices.length - postpaid;
+
+    // Subscription health.
+    const subBy = (s) => subs.filter((x) => x.status === s).length;
+
+    // Operational attention: active plans running low + overdue bills.
+    const lowBalance = subs
+        .filter((s) => s.status === "active" && s.volumeTotal > 0 && s.volumeRemaining / s.volumeTotal < 0.1)
+        .sort((a, b) => a.volumeRemaining / a.volumeTotal - b.volumeRemaining / b.volumeTotal);
+    const overdueBills = bills.filter((b) => b.status === "overdue");
+
+    const connectionData = [
+        { name: "Online", value: online, color: "#10b981" },
+        { name: "Offline", value: offline, color: "#cbd5e1" },
+    ];
+    const billingData = [
+        { name: "Prepaid", value: prepaid, color: "#0ea5e9" },
+        { name: "Postpaid", value: postpaid, color: "#8b5cf6" },
+    ];
+    const subData = [
+        { name: "Active", value: subBy("active"), color: "#10b981" },
+        { name: "Exhausted", value: subBy("exhausted"), color: "#ef4444" },
+        { name: "Expired", value: subBy("expired"), color: "#f59e0b" },
+        { name: "Cancelled", value: subBy("cancelled"), color: "#cbd5e1" },
+    ];
 
     return (
         <div>
@@ -127,6 +169,98 @@ const Dashboard = () => {
                     )}
                 </div>
             </div>
+
+            {/* Breakdown donuts */}
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <DonutCard title="Connections" data={connectionData} centerValue={devices.length} centerLabel="meters" />
+                <DonutCard title="Billing mix" data={billingData} centerValue={devices.length} centerLabel="connections" />
+                <DonutCard title="Subscriptions" data={subData} centerValue={subs.length} centerLabel="total" />
+            </div>
+
+            {/* Collections + attention */}
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                {/* Collections */}
+                <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+                    <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Collections</p>
+                        <Link to="/dashboard/billing" className="flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400">
+                            Billing <FiArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                    </div>
+
+                    {collected + outstanding === 0 ? (
+                        <p className="mt-6 rounded-md bg-slate-50 py-6 text-center text-xs text-slate-400 dark:bg-slate-800/50 dark:text-slate-500">
+                            No billing activity yet.
+                        </p>
+                    ) : (
+                        <>
+                            <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                <div
+                                    className="h-full bg-emerald-500"
+                                    style={{ width: `${(collected / (collected + outstanding)) * 100}%` }}
+                                />
+                                <div
+                                    className="h-full bg-amber-500"
+                                    style={{ width: `${(outstanding / (collected + outstanding)) * 100}%` }}
+                                />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">Collected</span>
+                                    </div>
+                                    <p className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{money(collected)}</p>
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="h-2 w-2 rounded-full bg-amber-500" />
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">Outstanding</span>
+                                    </div>
+                                    <p className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{money(outstanding)}</p>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Needs attention */}
+                <div className="flex flex-col rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Needs attention</p>
+
+                    {lowBalance.length === 0 && overdueBills.length === 0 ? (
+                        <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+                            <FiCheckCircle className="h-7 w-7 text-emerald-500" />
+                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">Nothing needs attention.</p>
+                        </div>
+                    ) : (
+                        <ul className="mt-3 space-y-3">
+                            {lowBalance.slice(0, 4).map((s) => (
+                                <li key={s._id} className="flex items-center gap-2.5">
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+                                        <FiDroplet className="h-3.5 w-3.5" />
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{s.device?.name || s.device?.deviceId || "—"}</p>
+                                        <p className="text-xs text-amber-600 dark:text-amber-400">Low balance · {s.volumeRemaining.toFixed(0)} L left</p>
+                                    </div>
+                                </li>
+                            ))}
+                            {overdueBills.slice(0, 4).map((b) => (
+                                <li key={b._id} className="flex items-center gap-2.5">
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                                        <FiClock className="h-3.5 w-3.5" />
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{b.device?.name || b.device?.deviceId || "—"}</p>
+                                        <p className="text-xs text-red-600 dark:text-red-400">Overdue · {money(b.amount)}</p>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -159,6 +293,59 @@ const StatCard = ({ label, value, icon: Icon, tone, to }) => {
         </Link>
     ) : (
         <div className={cls}>{inner}</div>
+    );
+};
+
+// Donut with a centered total and a legend of labelled counts.
+const DonutCard = ({ title, data, centerValue, centerLabel }) => {
+    const t = useChartTheme();
+    const nonEmpty = data.filter((d) => d.value > 0);
+    const hasData = nonEmpty.length > 0;
+
+    return (
+        <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{title}</p>
+
+            <div className="mt-3 flex items-center gap-4">
+                <div className="relative h-28 w-28 shrink-0">
+                    {hasData ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={nonEmpty}
+                                    dataKey="value"
+                                    innerRadius={38}
+                                    outerRadius={54}
+                                    paddingAngle={2}
+                                    stroke="none"
+                                >
+                                    {nonEmpty.map((d) => (
+                                        <Cell key={d.name} fill={d.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip formatter={(v, n) => [v, n]} {...t.tooltip} />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center rounded-full border-4 border-slate-100 dark:border-slate-800" />
+                    )}
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-lg font-semibold leading-none text-slate-900 dark:text-white">{centerValue}</span>
+                        <span className="mt-0.5 text-[10px] text-slate-400 dark:text-slate-500">{centerLabel}</span>
+                    </div>
+                </div>
+
+                <ul className="min-w-0 flex-1 space-y-1.5">
+                    {data.map((d) => (
+                        <li key={d.name} className="flex items-center gap-2 text-xs">
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: d.color }} />
+                            <span className="flex-1 truncate text-slate-500 dark:text-slate-400">{d.name}</span>
+                            <span className="font-medium text-slate-900 dark:text-white">{d.value}</span>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        </div>
     );
 };
 

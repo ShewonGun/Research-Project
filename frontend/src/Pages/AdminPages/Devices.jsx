@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { FiPlus } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import DeviceCard from "../../Components/AdminComponents/DeviceCard.jsx";
 import AddDeviceModal from "../../Components/AdminComponents/AddDeviceModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
@@ -55,6 +56,8 @@ const Devices = () => {
         }
     };
 
+    if (loading) return <WaterLoader center />;
+
     return (
         <div>
             {/* Header */}
@@ -70,7 +73,7 @@ const Devices = () => {
                     onClick={() => setModalOpen(true)}
                     className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
-                    <FiPlus className="h-4 w-4" /> Register connection
+                    <FiPlus className="h-4 w-4" /> <span className="hidden sm:inline">Register connection</span>
                 </button>
             </div>
 
@@ -80,9 +83,7 @@ const Devices = () => {
                 </div>
             )}
 
-            {loading ? (
-                <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-            ) : devices.length === 0 ? (
+            {devices.length === 0 ? (
                 <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
                     <p className="text-sm text-slate-500 dark:text-slate-400">No connections registered yet.</p>
                     <button

@@ -4,7 +4,7 @@
 /* Enable class-based dark mode: `dark:` responds to a `.dark` class on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
+:root {
     --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
     --font-sinhala: "Noto Sans Sinhala", sans-serif;
 }

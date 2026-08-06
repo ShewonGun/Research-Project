@@ -4,6 +4,7 @@ import { apiFetch } from "../../lib/api.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import PlanCard from "../../Components/UserComponents/PlanCard.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const statusStyles = {
     active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
@@ -59,7 +60,7 @@ const Plans = () => {
         }
     };
 
-    if (loading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
+    if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
 
     return (

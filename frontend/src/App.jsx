@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './Pages/SharedPages/Login.jsx'
 import Signup from './Pages/SharedPages/Signup.jsx'
+import WaterLoader from './Components/SharedComponents/WaterLoader.jsx'
 
 // Lazy-load each role's tree so a household never downloads admin code (and vice-versa).
 const DashboardLayout = lazy(() => import('./Components/AdminComponents/DashboardLayout.jsx'))
@@ -12,6 +13,7 @@ const Subscriptions = lazy(() => import('./Pages/AdminPages/Subscriptions.jsx'))
 const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
 const AdminAlerts = lazy(() => import('./Pages/AdminPages/Alerts.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
+const AdminProfile = lazy(() => import('./Pages/AdminPages/Profile.jsx'))
 
 const UserLayout = lazy(() => import('./Components/UserComponents/UserLayout.jsx'))
 const Home = lazy(() => import('./Pages/UserPages/Home.jsx'))
@@ -36,7 +38,7 @@ const RequireRole = ({ role, children }) => {
 const App = () => {
   return (
     <BrowserRouter>
-      <Suspense fallback={<div className="min-h-screen bg-slate-50 dark:bg-slate-950" />}>
+      <Suspense fallback={<WaterLoader fullscreen />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -57,6 +59,7 @@ const App = () => {
             <Route path="billing" element={<AdminBilling />} />
             <Route path="alerts" element={<AdminAlerts />} />
             <Route path="users" element={<Users />} />
+            <Route path="profile" element={<AdminProfile />} />
           </Route>
 
           {/* Consumer app */}

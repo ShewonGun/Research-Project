@@ -4,6 +4,7 @@ import { apiFetch } from "../../lib/api.js";
 import AddAdminModal from "../../Components/AdminComponents/AddAdminModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const PAGE_SIZE = 10;
 
@@ -62,6 +63,8 @@ const Users = () => {
     const admins = users.filter((u) => u.role === "admin").length;
     const households = users.length - admins;
 
+    if (loading) return <WaterLoader center />;
+
     return (
         <div>
             {/* Header */}
@@ -75,7 +78,7 @@ const Users = () => {
                     onClick={() => setAddOpen(true)}
                     className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
-                    <FiUserPlus className="h-4 w-4" /> New admin
+                    <FiUserPlus className="h-4 w-4" /> <span className="hidden sm:inline">New admin</span>
                 </button>
             </div>
 
@@ -111,14 +114,70 @@ const Users = () => {
             )}
 
             {/* Table */}
-            {loading ? (
-                <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-            ) : shown.length === 0 ? (
+            {shown.length === 0 ? (
                 <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
                     <p className="text-sm text-slate-500 dark:text-slate-400">No users here.</p>
                 </div>
             ) : (
-                <div className="mt-4 overflow-x-auto rounded-sm border border-slate-200 dark:border-slate-800">
+                <>
+                {/* Cards (mobile) */}
+                <div className="mt-4 space-y-3 md:hidden">
+                    {paged.map((u) => (
+                        <div key={u._id} className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                                        {(u.name || "?").slice(0, 1).toUpperCase()}
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium text-slate-900 dark:text-white">
+                                            {u.name}
+                                            {u._id === me?._id && <span className="ml-1.5 text-xs font-normal text-slate-400">(you)</span>}
+                                        </p>
+                                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">{u.email}</p>
+                                    </div>
+                                </div>
+                                <span
+                                    className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                                        u.role === "admin"
+                                            ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
+                                            : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                    }`}
+                                >
+                                    {u.role === "admin" ? "Admin" : "Household"}
+                                </span>
+                            </div>
+
+                            <div className="mt-3 space-y-2 text-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">Contact</span>
+                                    <span className="text-slate-700 dark:text-slate-300">{u.phone || "—"}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">Joined</span>
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {u._id !== me?._id && (
+                                <div className="mt-3 border-t border-slate-100 pt-3 text-right dark:border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDeleting(u)}
+                                        className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Table (desktop) */}
+                <div className="mt-4 hidden overflow-x-auto rounded-sm border border-slate-200 md:block dark:border-slate-800">
                     <table className="w-full min-w-140 text-sm">
                         <thead>
                             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
@@ -126,7 +185,7 @@ const Users = () => {
                                 <th className="px-4 py-2.5 font-medium">Role</th>
                                 <th className="px-4 py-2.5 font-medium">Contact</th>
                                 <th className="px-4 py-2.5 font-medium">Joined</th>
-                                <th className="px-4 py-2.5" />
+                                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -179,6 +238,7 @@ const Users = () => {
                         </tbody>
                     </table>
                 </div>
+                </>
             )}
 
             <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />

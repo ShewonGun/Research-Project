@@ -3,6 +3,7 @@ import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from "react-
 import { apiFetch } from "../../lib/api.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
+import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const severityChip = {
     critical: "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400",
@@ -53,8 +54,9 @@ const Alerts = () => {
         return () => clearInterval(id);
     }, [load]);
 
-    if (ctxLoading) return <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>;
+    if (ctxLoading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
+    if (loading) return <WaterLoader center />;
 
     const run = async (fn) => {
         try {
@@ -111,9 +113,7 @@ const Alerts = () => {
 
             {/* List */}
             <div className="mt-4 space-y-3">
-                {loading ? (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-                ) : list.length === 0 ? (
+                {list.length === 0 ? (
                     <div className="rounded-sm border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
                         <FiCheckCircle className="mx-auto h-8 w-8 text-emerald-500" />
                         <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">No {filter === "open" ? "open " : ""}alerts</p>
