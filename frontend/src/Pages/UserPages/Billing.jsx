@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FiFileText, FiDroplet, FiClock, FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
@@ -15,8 +16,8 @@ const money = (n) => `Rs. ${Number(n || 0).toLocaleString(undefined, { minimumFr
 
 const Billing = () => {
     const { device, mode, bill, estimate, bills, loading, payBill } = useMyWater();
+    const toast = useToast();
     const [payingId, setPayingId] = useState(null);
-    const [error, setError] = useState("");
 
     if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
@@ -38,11 +39,11 @@ const Billing = () => {
 
     const pay = async (id) => {
         setPayingId(id);
-        setError("");
         try {
             await payBill(id);
+            toast.success("Payment successful. Full flow restored.");
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setPayingId(null);
         }
@@ -54,12 +55,6 @@ const Billing = () => {
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                 Postpaid connection — use water now, pay your monthly bill.
             </p>
-
-            {error && (
-                <div className="mt-5 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
 
             {/* Current cycle */}
             <div className="mt-5 rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 // Assign a package to a device from the Subscriptions page (device + package pickers).
 const AssignSubscriptionModal = ({ open, onClose, onAssigned }) => {
+    const toast = useToast();
     const [devices, setDevices] = useState([]);
     const [packages, setPackages] = useState([]);
     const [deviceId, setDeviceId] = useState("");
     const [packageId, setPackageId] = useState("");
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
 
     useEffect(() => {
         if (!open) return;
-        setError("");
         setDeviceId("");
         setPackageId("");
         Promise.all([
@@ -30,7 +30,6 @@ const AssignSubscriptionModal = ({ open, onClose, onAssigned }) => {
     const assign = async (e) => {
         e.preventDefault();
         setSaving(true);
-        setError("");
         try {
             const device = devices.find((d) => d._id === deviceId);
             await apiFetch("/api/subscriptions", {
@@ -39,8 +38,9 @@ const AssignSubscriptionModal = ({ open, onClose, onAssigned }) => {
             });
             onAssigned?.();
             onClose?.();
+            toast.success("Package assigned.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setSaving(false);
         }
@@ -66,12 +66,6 @@ const AssignSubscriptionModal = ({ open, onClose, onAssigned }) => {
                         <FiX className="h-4 w-4" />
                     </button>
                 </div>
-
-                {error && (
-                    <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        {error}
-                    </div>
-                )}
 
                 <form onSubmit={assign} className="mt-4 space-y-3">
                     <div>

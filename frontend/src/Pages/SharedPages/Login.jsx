@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FiDroplet, FiEye, FiEyeOff, FiAlertTriangle, FiLoader } from "react-icons/fi";
+import { FiDroplet, FiEye, FiEyeOff, FiLoader } from "react-icons/fi";
 import ThemeToggle from "../../Components/SharedComponents/ThemeToggle.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import waterPhoto1 from "../../assets/Water-Photo-1.jpg";
 import waterPhoto2 from "../../assets/Water-Photo-2.jpeg";
 import waterPhoto3 from "../../assets/Water-Photo-3.jpg";
@@ -12,11 +13,11 @@ const slides = [waterPhoto1, waterPhoto2, waterPhoto3];
 
 const Login = () => {
     const navigate = useNavigate();
+    const toast = useToast();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
     const [slide, setSlide] = useState(0);
 
     // Auto-advance the background photo every 5 seconds.
@@ -29,7 +30,6 @@ const Login = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
         setLoading(true);
 
         try {
@@ -42,16 +42,17 @@ const Login = () => {
             const data = await res.json();
 
             if (!res.ok) {
-                setError(data.message || "Login failed");
+                toast.error(data.message || "Login failed");
                 return;
             }
 
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
+            toast.success(`Welcome back${data.user?.name ? `, ${data.user.name.split(" ")[0]}` : ""}!`);
             // Route by role: admins to the console, households to their app.
             navigate(data.user?.role === "admin" ? "/dashboard" : "/app", { replace: true });
         } catch {
-            setError("Unable to reach the server. Please try again.");
+            toast.error("Unable to reach the server. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -131,13 +132,6 @@ const Login = () => {
                     <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
                         Sign in to your account.
                     </p>
-
-                    {error && (
-                        <div className="mt-6 flex items-start gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                            <FiAlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
-                            <span>{error}</span>
-                        </div>
-                    )}
 
                     <form onSubmit={handleSubmit} className="mt-6 space-y-4">
                         <div>

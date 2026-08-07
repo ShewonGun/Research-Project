@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { FiPlus } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 import WaterPackageCard from "../../Components/AdminComponents/WaterPackageCard.jsx";
 import AddWaterPackageModal from "../../Components/AdminComponents/AddWaterPackageModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
 const WaterPackages = () => {
+    const toast = useToast();
     const [packages, setPackages] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null); // package pending delete confirmation
@@ -17,16 +18,15 @@ const WaterPackages = () => {
 
     const load = useCallback(async () => {
         setLoading(true);
-        setError("");
         try {
             const data = await apiFetch("/api/water-packages");
             setPackages(data.packages || []);
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -49,8 +49,9 @@ const WaterPackages = () => {
             await apiFetch(`/api/water-packages/${deleting._id}`, { method: "DELETE" });
             setDeleting(null);
             await load();
+            toast.success("Package deleted.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setDeleteLoading(false);
         }
@@ -76,12 +77,6 @@ const WaterPackages = () => {
                     <FiPlus className="h-4 w-4" /> New package
                 </button>
             </div>
-
-            {error && (
-                <div className="mt-5 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
 
             {packages.length === 0 ? (
                 <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">

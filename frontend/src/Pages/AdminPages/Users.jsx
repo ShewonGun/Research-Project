@@ -5,6 +5,7 @@ import AddAdminModal from "../../Components/AdminComponents/AddAdminModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 const PAGE_SIZE = 10;
 
@@ -15,10 +16,10 @@ const filters = [
 ];
 
 const Users = () => {
+    const toast = useToast();
     const me = JSON.parse(localStorage.getItem("user") || "null");
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
     const [filter, setFilter] = useState("all");
     const [page, setPage] = useState(1);
     const [addOpen, setAddOpen] = useState(false);
@@ -29,16 +30,15 @@ const Users = () => {
 
     const load = useCallback(async () => {
         setLoading(true);
-        setError("");
         try {
             const data = await apiFetch("/api/users");
             setUsers(data.users || []);
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -51,8 +51,9 @@ const Users = () => {
             await apiFetch(`/api/users/${deleting._id}`, { method: "DELETE" });
             setDeleting(null);
             await load();
+            toast.success("User deleted.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setDeleteLoading(false);
         }
@@ -106,12 +107,6 @@ const Users = () => {
                     </button>
                 ))}
             </div>
-
-            {error && (
-                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
 
             {/* Table */}
             {shown.length === 0 ? (

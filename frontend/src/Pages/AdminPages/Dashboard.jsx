@@ -7,6 +7,8 @@ import {
     FiCreditCard,
     FiDollarSign,
     FiArrowRight,
+    FiArrowUpRight,
+    FiArrowDownRight,
     FiAlertOctagon,
     FiCheckCircle,
     FiDroplet,
@@ -14,6 +16,8 @@ import {
 } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { useChartTheme } from "../../Components/SharedComponents/chartTheme.js";
+import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
+import Sparkline from "../../Components/SharedComponents/Sparkline.jsx";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 
 const money = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -68,7 +72,7 @@ const Dashboard = () => {
         .filter((b) => b.status === "unpaid" || b.status === "overdue")
         .reduce((sum, b) => sum + (b.amount || 0), 0);
     const collected = bills.filter((b) => b.status === "paid").reduce((sum, b) => sum + (b.amount || 0), 0);
-    const recentAlerts = alerts.slice(0, 5);
+    const recentAlerts = alerts.slice(0, 3);
 
     // Billing mix (postpaid is opt-in; everything else is prepaid).
     const postpaid = devices.filter((d) => d.billingMode === "postpaid").length;
@@ -76,6 +80,36 @@ const Dashboard = () => {
 
     // Subscription health.
     const subBy = (s) => subs.filter((x) => x.status === s).length;
+
+    // Sparkline + weekly % delta helpers, derived client-side from the same data.
+    const bucket14 = (items, getDate, getVal = () => 1) => {
+        const counts = {};
+        items.forEach((it) => {
+            const raw = getDate(it);
+            if (!raw) return;
+            const k = new Date(raw).toISOString().slice(0, 10);
+            counts[k] = (counts[k] || 0) + getVal(it);
+        });
+        const arr = [];
+        for (let i = 13; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            arr.push(counts[d.toISOString().slice(0, 10)] || 0);
+        }
+        return arr;
+    };
+    const toSeries = (arr) => arr.slice(7).map((v, i) => ({ i, v }));
+    // % change of last 7 days vs the previous 7. null when there's no prior baseline.
+    const pctDelta = (arr) => {
+        const last = arr.slice(7).reduce((s, v) => s + v, 0);
+        const prev = arr.slice(0, 7).reduce((s, v) => s + v, 0);
+        if (prev === 0) return last === 0 ? 0 : null;
+        return Math.round(((last - prev) / prev) * 100);
+    };
+
+    const leak14 = bucket14(alerts, (a) => a.createdAt);
+    const plans14 = bucket14(subs, (s) => s.createdAt);
+    const bills14 = bucket14(bills, (b) => b.createdAt, (b) => b.amount || 0);
 
     // Operational attention: active plans running low + overdue bills.
     const lowBalance = subs
@@ -105,12 +139,46 @@ const Dashboard = () => {
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Live overview of your water network.</p>
 
             {/* Stat tiles */}
-            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <StatCard label="Online meters" value={`${online}/${devices.length}`} icon={FiWifi} tone="emerald" />
-                <StatCard label="Active leaks" value={activeLeaks} icon={FiAlertTriangle} tone={activeLeaks > 0 ? "red" : "slate"} to="/dashboard/alerts" />
-                <StatCard label="Active plans" value={activePlans} icon={FiCreditCard} tone="sky" to="/dashboard/subscriptions" />
-                <StatCard label="Outstanding" value={money(outstanding)} icon={FiDollarSign} tone="amber" to="/dashboard/billing" />
-            </div>
+            <StaggerGrid className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StaggerItem className="h-full">
+                    <StatCard label="Online meters" value={`${online}/${devices.length}`} icon={FiWifi} tone="emerald" />
+                </StaggerItem>
+                <StaggerItem className="h-full">
+                    <StatCard
+                        label="Active leaks"
+                        value={activeLeaks}
+                        icon={FiAlertTriangle}
+                        tone={activeLeaks > 0 ? "red" : "slate"}
+                        to="/dashboard/alerts"
+                        series={toSeries(leak14)}
+                        pct={pctDelta(leak14)}
+                        deltaInvert
+                    />
+                </StaggerItem>
+                <StaggerItem className="h-full">
+                    <StatCard
+                        label="Active plans"
+                        value={activePlans}
+                        icon={FiCreditCard}
+                        tone="sky"
+                        to="/dashboard/subscriptions"
+                        series={toSeries(plans14)}
+                        pct={pctDelta(plans14)}
+                    />
+                </StaggerItem>
+                <StaggerItem className="h-full">
+                    <StatCard
+                        label="Outstanding"
+                        value={money(outstanding)}
+                        icon={FiDollarSign}
+                        tone="amber"
+                        to="/dashboard/billing"
+                        series={toSeries(bills14)}
+                        pct={pctDelta(bills14)}
+                        deltaInvert
+                    />
+                </StaggerItem>
+            </StaggerGrid>
 
             <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
                 {/* Network consumption */}
@@ -274,7 +342,32 @@ const tones = {
     slate: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
 
-const StatCard = ({ label, value, icon: Icon, tone, to }) => {
+const sparkColors = {
+    sky: "#0ea5e9",
+    emerald: "#10b981",
+    violet: "#8b5cf6",
+    amber: "#f59e0b",
+    red: "#ef4444",
+    slate: "#94a3b8",
+};
+
+const TrendChip = ({ pct, invert }) => {
+    if (pct == null) return <span className="text-[11px] text-slate-400 dark:text-slate-500">vs last wk</span>;
+    if (pct === 0) return <span className="text-[11px] text-slate-400 dark:text-slate-500">no change</span>;
+    const up = pct > 0;
+    const good = invert ? !up : up; // for leaks / outstanding (invert), less is better
+    const color = good ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+    const Arrow = up ? FiArrowUpRight : FiArrowDownRight;
+    return (
+        <span className={`flex items-center gap-0.5 text-[11px] font-medium ${color}`}>
+            <Arrow className="h-3 w-3" />
+            {Math.abs(pct)}% vs last wk
+        </span>
+    );
+};
+
+const StatCard = ({ label, value, icon: Icon, tone, to, series, pct, deltaInvert }) => {
+    const hasFooter = (series && series.length > 0) || pct !== undefined;
     const inner = (
         <>
             <div className="flex items-center justify-between">
@@ -284,11 +377,21 @@ const StatCard = ({ label, value, icon: Icon, tone, to }) => {
                 </span>
             </div>
             <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</p>
+            {hasFooter && (
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <div className="min-w-0">{pct !== undefined && <TrendChip pct={pct} invert={deltaInvert} />}</div>
+                    {series && series.length > 0 && (
+                        <div className="h-7 w-20 shrink-0">
+                            <Sparkline data={series} color={sparkColors[tone] || sparkColors.sky} />
+                        </div>
+                    )}
+                </div>
+            )}
         </>
     );
-    const cls = "rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900";
+    const cls = "flex h-full flex-col rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900";
     return to ? (
-        <Link to={to} className={`${cls} block transition hover:border-sky-300 dark:hover:border-sky-700`}>
+        <Link to={to} className={`${cls} transition hover:border-sky-300 dark:hover:border-sky-700`}>
             {inner}
         </Link>
     ) : (

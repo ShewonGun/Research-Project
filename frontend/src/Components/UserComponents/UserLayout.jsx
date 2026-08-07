@@ -13,6 +13,7 @@ import {
 import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
 import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
 import Logo from "../SharedComponents/Logo.jsx";
+import { PageFade } from "../SharedComponents/Motion.jsx";
 import { MyWaterProvider, useMyWater } from "../../Context/MyWaterContext.jsx";
 
 // Nav is mode-aware: prepaid households manage Plans, postpaid ones see Billing.
@@ -201,7 +202,9 @@ const Shell = () => {
 
       {/* Content */}
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-20 sm:px-6">
-        <Outlet />
+        <PageFade>
+          <Outlet />
+        </PageFade>
       </main>
 
       <ConfirmationBox

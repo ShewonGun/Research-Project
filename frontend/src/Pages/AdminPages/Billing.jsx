@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
@@ -17,27 +18,23 @@ const statusStyles = {
 const money = (n) => `Rs. ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const Billing = () => {
+    const toast = useToast();
     const [tariff, setTariff] = useState(null);
     const [bills, setBills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [savedMsg, setSavedMsg] = useState("");
-    const [error, setError] = useState("");
     const [confirmRun, setConfirmRun] = useState(false);
     const [running, setRunning] = useState(false);
-    const [runResult, setRunResult] = useState("");
     const [page, setPage] = useState(1);
     const [editing, setEditing] = useState(false);
     const [snapshot, setSnapshot] = useState(null);
 
     const startEdit = () => {
         setSnapshot(tariff);
-        setSavedMsg("");
         setEditing(true);
     };
     const cancelEdit = () => {
         if (snapshot) setTariff(snapshot);
-        setError("");
         setEditing(false);
     };
 
@@ -50,11 +47,11 @@ const Billing = () => {
             setTariff(t.tariff);
             setBills(b.bills || []);
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -68,8 +65,6 @@ const Billing = () => {
 
     const saveTariff = async () => {
         setSaving(true);
-        setError("");
-        setSavedMsg("");
         try {
             const payload = {
                 name: tariff.name,
@@ -82,10 +77,10 @@ const Billing = () => {
             };
             const data = await apiFetch("/api/tariff", { method: "PUT", body: payload });
             setTariff(data.tariff);
-            setSavedMsg("Tariff saved.");
             setEditing(false);
+            toast.success("Tariff saved.");
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setSaving(false);
         }
@@ -93,14 +88,12 @@ const Billing = () => {
 
     const runBilling = async () => {
         setRunning(true);
-        setError("");
-        setRunResult("");
         try {
             const data = await apiFetch("/api/bills/run", { method: "POST" });
-            setRunResult(`Generated ${data.count} bill${data.count === 1 ? "" : "s"} totalling ${money(data.total)}.`);
+            toast.success(`Generated ${data.count} bill${data.count === 1 ? "" : "s"} totalling ${money(data.total)}.`);
             await load();
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setRunning(false);
             setConfirmRun(false);
@@ -111,8 +104,9 @@ const Billing = () => {
         try {
             await apiFetch(`/api/bills/${id}/pay`, { method: "PUT" });
             await load();
+            toast.success("Bill marked paid.");
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         }
     };
 
@@ -150,33 +144,19 @@ const Billing = () => {
                 <Tile label="Open bills" value={outstanding.length} icon={FiFileText} tone="sky" />
             </div>
 
-            {error && (
-                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
-            {runResult && (
-                <div className="mt-4 rounded-md bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-                    {runResult}
-                </div>
-            )}
-
             {/* Tariff editor */}
             {tariff && (
                 <div className="mt-5 rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center justify-between gap-3">
                         <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Tariff</h2>
                         {!editing ? (
-                            <div className="flex items-center gap-3">
-                                {savedMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{savedMsg}</span>}
-                                <button
-                                    type="button"
-                                    onClick={startEdit}
-                                    className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                                >
-                                    <FiEdit2 className="h-3.5 w-3.5" /> Edit
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={startEdit}
+                                className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                            >
+                                <FiEdit2 className="h-3.5 w-3.5" /> Edit
+                            </button>
                         ) : (
                             <button
                                 type="button"

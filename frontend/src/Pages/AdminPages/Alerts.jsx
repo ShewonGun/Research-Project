@@ -3,6 +3,7 @@ import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from "react-
 import { apiFetch } from "../../lib/api.js";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 const PAGE_SIZE = 10;
 
@@ -32,11 +33,11 @@ const filters = [
 ];
 
 const Alerts = () => {
+    const toast = useToast();
     const [alerts, setAlerts] = useState([]);
     const [filter, setFilter] = useState("all");
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
 
     useEffect(() => setPage(1), [filter]);
 
@@ -46,11 +47,11 @@ const Alerts = () => {
             const data = await apiFetch("/api/alerts?limit=200");
             setAlerts(data.alerts || []);
         } catch (err) {
-            if (!silent) setError(err.message);
+            if (!silent) toast.error(err.message);
         } finally {
             if (!silent) setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -58,17 +59,18 @@ const Alerts = () => {
         return () => clearInterval(id);
     }, [load]);
 
-    const run = async (fn) => {
+    const run = async (fn, successMsg) => {
         try {
             await fn();
             await load();
+            if (successMsg) toast.success(successMsg);
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         }
     };
-    const acknowledge = (id) => run(() => apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" }));
-    const resolve = (id) => run(() => apiFetch(`/api/alerts/${id}/resolve`, { method: "PUT" }));
-    const reopen = (deviceId) => run(() => apiFetch(`/api/devices/${deviceId}/valve`, { method: "PUT", body: { state: "open" } }));
+    const acknowledge = (id) => run(() => apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" }), "Alert acknowledged.");
+    const resolve = (id) => run(() => apiFetch(`/api/alerts/${id}/resolve`, { method: "PUT" }), "Alert resolved.");
+    const reopen = (deviceId) => run(() => apiFetch(`/api/devices/${deviceId}/valve`, { method: "PUT", body: { state: "open" } }), "Supply reopened.");
 
     const shown = filter === "all" ? alerts : alerts.filter((a) => a.status === filter);
     const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -111,10 +113,6 @@ const Alerts = () => {
                     </button>
                 ))}
             </div>
-
-            {error && (
-                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">{error}</div>
-            )}
 
             {/* Table */}
             {shown.length === 0 ? (

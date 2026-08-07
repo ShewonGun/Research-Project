@@ -4,6 +4,7 @@ import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, Fi
 import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
 import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
 import Logo from "../SharedComponents/Logo.jsx";
+import { PageFade } from "../SharedComponents/Motion.jsx";
 
 const navItems = [
     { to: "/dashboard", label: "Overview", end: true, icon: FiGrid },
@@ -138,7 +139,9 @@ const DashboardLayout = () => {
 
             {/* Page content */}
             <main className="p-6 pt-20 md:pl-62">
-                <Outlet />
+                <PageFade>
+                    <Outlet />
+                </PageFade>
             </main>
 
             <ConfirmationBox

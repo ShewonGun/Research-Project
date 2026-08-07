@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 const emptyForm = { deviceId: "", name: "", location: "", owner: "" };
 
 const AddDeviceModal = ({ open, onClose, onSaved }) => {
+    const toast = useToast();
     const [form, setForm] = useState(emptyForm);
     const [households, setHouseholds] = useState([]);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
 
     useEffect(() => {
         if (!open) return;
         setForm(emptyForm);
-        setError("");
         apiFetch("/api/users?role=user")
             .then((d) => setHouseholds(d.users || []))
             .catch(() => setHouseholds([]));
@@ -25,7 +25,6 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
         setSaving(true);
         try {
             const body = { ...form };
@@ -33,8 +32,9 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
             await apiFetch("/api/devices", { method: "POST", body });
             onSaved?.();
             onClose?.();
+            toast.success("Connection registered.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setSaving(false);
         }
@@ -60,12 +60,6 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
                         <FiX className="h-4 w-4" />
                     </button>
                 </div>
-
-                {error && (
-                    <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        {error}
-                    </div>
-                )}
 
                 <form onSubmit={handleSubmit} className="mt-4 space-y-3">
                     <Field label="Device ID">

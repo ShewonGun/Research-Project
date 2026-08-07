@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { FiCheck } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import PlanCard from "../../Components/UserComponents/PlanCard.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
@@ -15,10 +16,10 @@ const statusStyles = {
 
 const Plans = () => {
     const { device, sub, loading, refresh } = useMyWater();
+    const toast = useToast();
     const [packages, setPackages] = useState([]);
     const [history, setHistory] = useState([]);
     const [buyingId, setBuyingId] = useState(null);
-    const [error, setError] = useState("");
 
     const loadExtra = useCallback(async () => {
         if (!device) return;
@@ -48,13 +49,13 @@ const Plans = () => {
 
     const purchase = async (packageId) => {
         setBuyingId(packageId);
-        setError("");
         try {
             await apiFetch("/api/subscriptions", { method: "POST", body: { deviceId: device.deviceId, packageId } });
             await refresh();
             await loadExtra();
+            toast.success("Plan activated. Your water is on!");
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setBuyingId(null);
         }
@@ -67,12 +68,6 @@ const Plans = () => {
         <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Plans</h1>
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Buy or renew your prepaid water plan.</p>
-
-            {error && (
-                <div className="mt-5 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
 
             {/* Current plan */}
             {active && (

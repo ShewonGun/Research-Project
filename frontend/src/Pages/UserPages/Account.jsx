@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { FiDroplet, FiFileText, FiCheck, FiInfo, FiCreditCard, FiUser, FiLock } from "react-icons/fi";
+import { FiDroplet, FiFileText, FiCheck, FiCreditCard, FiUser, FiLock } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import { apiFetch } from "../../lib/api.js";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import PasswordInput from "../../Components/SharedComponents/PasswordInput.jsx";
 
 const inputCls =
     "w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-800/50";
@@ -27,34 +29,30 @@ const initials = (name) => (name?.trim()?.[0] || "U").toUpperCase();
 
 const Account = () => {
     const { device, mode, loading, setMode } = useMyWater();
+    const toast = useToast();
     const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("user") || "null"));
     const [switching, setSwitching] = useState(null);
-    const [error, setError] = useState("");
 
     // Personal details form
     const [name, setName] = useState(user?.name || "");
     const [phone, setPhone] = useState(user?.phone || "");
     const [savingProfile, setSavingProfile] = useState(false);
-    const [profileMsg, setProfileMsg] = useState("");
-    const [profileErr, setProfileErr] = useState("");
 
     // Password form
     const [password, setPassword] = useState("");
     const [confirm, setConfirm] = useState("");
     const [savingPw, setSavingPw] = useState(false);
-    const [pwMsg, setPwMsg] = useState("");
-    const [pwErr, setPwErr] = useState("");
 
     if (loading) return <WaterLoader center />;
 
     const change = async (target) => {
         if (target === mode) return;
         setSwitching(target);
-        setError("");
         try {
             await setMode(target);
+            toast.success(`Switched to ${target}.`);
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setSwitching(null);
         }
@@ -64,10 +62,8 @@ const Account = () => {
 
     const saveProfile = async (e) => {
         e.preventDefault();
-        setProfileMsg("");
-        setProfileErr("");
         if (!name.trim()) {
-            setProfileErr("Name cannot be empty.");
+            toast.error("Name cannot be empty.");
             return;
         }
         setSavingProfile(true);
@@ -75,9 +71,9 @@ const Account = () => {
             const data = await apiFetch("/api/users/profile", { method: "PUT", body: { name: name.trim(), phone } });
             setUser(data.user);
             localStorage.setItem("user", JSON.stringify(data.user));
-            setProfileMsg("Profile updated.");
+            toast.success("Profile updated.");
         } catch (err) {
-            setProfileErr(err.message);
+            toast.error(err.message);
         } finally {
             setSavingProfile(false);
         }
@@ -85,14 +81,12 @@ const Account = () => {
 
     const savePassword = async (e) => {
         e.preventDefault();
-        setPwMsg("");
-        setPwErr("");
         if (password.length < 6) {
-            setPwErr("Password must be at least 6 characters.");
+            toast.error("Password must be at least 6 characters.");
             return;
         }
         if (password !== confirm) {
-            setPwErr("Passwords do not match.");
+            toast.error("Passwords do not match.");
             return;
         }
         setSavingPw(true);
@@ -100,9 +94,9 @@ const Account = () => {
             await apiFetch("/api/users/profile", { method: "PUT", body: { password } });
             setPassword("");
             setConfirm("");
-            setPwMsg("Password changed.");
+            toast.success("Password changed.");
         } catch (err) {
-            setPwErr(err.message);
+            toast.error(err.message);
         } finally {
             setSavingPw(false);
         }
@@ -153,19 +147,6 @@ const Account = () => {
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">Personal details</p>
                 </div>
 
-                {profileErr && (
-                    <div className="mt-4 flex items-start gap-2 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        <FiInfo className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{profileErr}</span>
-                    </div>
-                )}
-                {profileMsg && (
-                    <div className="mt-4 flex items-start gap-2 rounded-md bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-                        <FiCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{profileMsg}</span>
-                    </div>
-                )}
-
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Name</span>
@@ -202,27 +183,14 @@ const Account = () => {
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">Change password</p>
                 </div>
 
-                {pwErr && (
-                    <div className="mt-4 flex items-start gap-2 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        <FiInfo className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{pwErr}</span>
-                    </div>
-                )}
-                {pwMsg && (
-                    <div className="mt-4 flex items-start gap-2 rounded-md bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-                        <FiCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{pwMsg}</span>
-                    </div>
-                )}
-
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">New password</span>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={inputCls} />
+                        <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={inputCls} />
                     </label>
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Confirm password</span>
-                        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" className={inputCls} />
+                        <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" className={inputCls} />
                     </label>
                 </div>
 
@@ -255,13 +223,6 @@ const Account = () => {
                     </div>
                 ) : (
                     <>
-                        {error && (
-                            <div className="mt-4 flex items-start gap-2 rounded-md bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                <FiInfo className="mt-0.5 h-4 w-4 shrink-0" />
-                                <span>{error}</span>
-                            </div>
-                        )}
-
                         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {modes.map(({ key, icon: Icon, title, blurb }) => {
                                 const selected = mode === key;

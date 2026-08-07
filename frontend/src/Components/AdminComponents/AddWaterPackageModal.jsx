@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 const emptyForm = {
     name: "",
@@ -12,14 +13,13 @@ const emptyForm = {
 };
 
 const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
+    const toast = useToast();
     const [form, setForm] = useState(emptyForm);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
 
     // Sync the form whenever the modal opens (for create) or the target changes (edit).
     useEffect(() => {
         if (!open) return;
-        setError("");
         setForm(
             editing
                 ? {
@@ -41,7 +41,6 @@ const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
         setSaving(true);
         try {
             const payload = {
@@ -59,8 +58,9 @@ const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
             }
             onSaved?.();
             onClose?.();
+            toast.success(editing ? "Package updated." : "Package created.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setSaving(false);
         }
@@ -88,12 +88,6 @@ const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
                         <FiX className="h-4 w-4" />
                     </button>
                 </div>
-
-                {error && (
-                    <div className="mt-3 rounded-sm bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        {error}
-                    </div>
-                )}
 
                 <form onSubmit={handleSubmit} className="mt-4 space-y-3">
                     <Field label="Name">

@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
+import PasswordInput from "../SharedComponents/PasswordInput.jsx";
 
 const empty = { name: "", email: "", password: "", phone: "" };
 
 // Create a new admin account (admin-only endpoint).
 const AddAdminModal = ({ open, onClose, onSaved }) => {
+    const toast = useToast();
     const [form, setForm] = useState(empty);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
 
     useEffect(() => {
         if (!open) return;
         setForm(empty);
-        setError("");
     }, [open]);
 
     if (!open) return null;
@@ -23,13 +24,13 @@ const AddAdminModal = ({ open, onClose, onSaved }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setSaving(true);
-        setError("");
         try {
             await apiFetch("/api/users/admins", { method: "POST", body: form });
             onSaved?.();
             onClose?.();
+            toast.success("Admin account created.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setSaving(false);
         }
@@ -56,12 +57,6 @@ const AddAdminModal = ({ open, onClose, onSaved }) => {
                     </button>
                 </div>
 
-                {error && (
-                    <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                        {error}
-                    </div>
-                )}
-
                 <form onSubmit={handleSubmit} className="mt-4 space-y-3">
                     <Field label="Full name">
                         <input type="text" required value={form.name} onChange={set("name")} className={inputCls} placeholder="Jane Perera" />
@@ -70,7 +65,7 @@ const AddAdminModal = ({ open, onClose, onSaved }) => {
                         <input type="email" required value={form.email} onChange={set("email")} className={inputCls} placeholder="admin@aquaflow.lk" />
                     </Field>
                     <Field label="Password">
-                        <input type="password" required minLength={6} value={form.password} onChange={set("password")} className={inputCls} placeholder="••••••••" />
+                        <PasswordInput required minLength={6} value={form.password} onChange={set("password")} className={inputCls} placeholder="••••••••" />
                     </Field>
                     <Field label="Phone (optional)">
                         <input type="text" value={form.phone} onChange={set("phone")} className={inputCls} placeholder="0771234567" />

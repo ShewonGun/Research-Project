@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
@@ -31,22 +32,21 @@ const relativeTime = (date) => {
 
 const Alerts = () => {
     const { device, loading: ctxLoading } = useMyWater();
+    const toast = useToast();
     const [all, setAll] = useState([]);
     const [filter, setFilter] = useState("open");
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
 
     const load = useCallback(async () => {
         try {
             const data = await apiFetch(`/api/alerts?limit=200`);
             setAll(data.alerts || []);
-            setError("");
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -58,16 +58,17 @@ const Alerts = () => {
     if (!device) return <NoDevice />;
     if (loading) return <WaterLoader center />;
 
-    const run = async (fn) => {
+    const run = async (fn, successMsg) => {
         try {
             await fn();
             await load();
+            if (successMsg) toast.success(successMsg);
         } catch (e) {
-            setError(e.message);
+            toast.error(e.message);
         }
     };
-    const acknowledge = (id) => run(() => apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" }));
-    const resolve = (id) => run(() => apiFetch(`/api/alerts/${id}/resolve`, { method: "PUT" }));
+    const acknowledge = (id) => run(() => apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" }), "Alert dismissed.");
+    const resolve = (id) => run(() => apiFetch(`/api/alerts/${id}/resolve`, { method: "PUT" }), "Marked as fixed.");
 
     const activeCount = all.filter((a) => a.status === "active").length;
     const resolvedCount = all.filter((a) => a.status === "resolved").length;
@@ -106,10 +107,6 @@ const Alerts = () => {
                     </button>
                 ))}
             </div>
-
-            {error && (
-                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">{error}</div>
-            )}
 
             {/* List */}
             <div className="mt-4 space-y-3">

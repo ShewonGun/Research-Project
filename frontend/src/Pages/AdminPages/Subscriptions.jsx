@@ -5,6 +5,7 @@ import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubs
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 
 const PAGE_SIZE = 10;
 
@@ -24,9 +25,9 @@ const statusStyles = {
 };
 
 const Subscriptions = () => {
+    const toast = useToast();
     const [subs, setSubs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
     const [filter, setFilter] = useState("all");
     const [page, setPage] = useState(1);
     const [assignOpen, setAssignOpen] = useState(false);
@@ -41,11 +42,11 @@ const Subscriptions = () => {
             const data = await apiFetch("/api/subscriptions");
             setSubs(data.subscriptions || []);
         } catch (err) {
-            if (!silent) setError(err.message);
+            if (!silent) toast.error(err.message);
         } finally {
             if (!silent) setLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         load();
@@ -60,8 +61,9 @@ const Subscriptions = () => {
             await apiFetch(`/api/subscriptions/${cancelling._id}`, { method: "DELETE" });
             setCancelling(null);
             await load();
+            toast.success("Subscription cancelled.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message);
         } finally {
             setCancelLoading(false);
         }
@@ -116,12 +118,6 @@ const Subscriptions = () => {
                     </button>
                 ))}
             </div>
-
-            {error && (
-                <div className="mt-4 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-400">
-                    {error}
-                </div>
-            )}
 
             {/* Table */}
             {shown.length === 0 ? (
