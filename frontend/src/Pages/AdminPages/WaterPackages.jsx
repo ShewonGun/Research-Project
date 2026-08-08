@@ -5,7 +5,10 @@ import { useToast } from "../../Context/ToastContext.jsx";
 import WaterPackageCard from "../../Components/AdminComponents/WaterPackageCard.jsx";
 import AddWaterPackageModal from "../../Components/AdminComponents/AddWaterPackageModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
+import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+
+const PAGE_SIZE = 8;
 
 const WaterPackages = () => {
     const toast = useToast();
@@ -15,6 +18,7 @@ const WaterPackages = () => {
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null); // package pending delete confirmation
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [page, setPage] = useState(1);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -90,11 +94,14 @@ const WaterPackages = () => {
                     </button>
                 </div>
             ) : (
-                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-                    {packages.map((pkg) => (
-                        <WaterPackageCard key={pkg._id} pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
-                    ))}
-                </div>
+                <>
+                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                        {packages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((pkg) => (
+                            <WaterPackageCard key={pkg._id} pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
+                        ))}
+                    </div>
+                    <Pagination page={page} pageSize={PAGE_SIZE} total={packages.length} onChange={setPage} />
+                </>
             )}
 
             <AddWaterPackageModal

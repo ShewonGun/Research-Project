@@ -20,15 +20,25 @@ const Plans = () => {
     const [packages, setPackages] = useState([]);
     const [history, setHistory] = useState([]);
     const [buyingId, setBuyingId] = useState(null);
+    const [extraLoading, setExtraLoading] = useState(true);
 
-    const loadExtra = useCallback(async () => {
-        if (!device) return;
-        const [pkgs, subs] = await Promise.all([
-            apiFetch("/api/water-packages?active=true").catch(() => ({ packages: [] })),
-            apiFetch(`/api/subscriptions?device=${device._id}`).catch(() => ({ subscriptions: [] })),
-        ]);
-        setPackages(pkgs.packages || []);
-        setHistory(subs.subscriptions || []);
+    // `silent` skips the full-page loader (used after a purchase refresh).
+    const loadExtra = useCallback(async (silent = false) => {
+        if (!device) {
+            setExtraLoading(false);
+            return;
+        }
+        if (!silent) setExtraLoading(true);
+        try {
+            const [pkgs, subs] = await Promise.all([
+                apiFetch("/api/water-packages?active=true").catch(() => ({ packages: [] })),
+                apiFetch(`/api/subscriptions?device=${device._id}`).catch(() => ({ subscriptions: [] })),
+            ]);
+            setPackages(pkgs.packages || []);
+            setHistory(subs.subscriptions || []);
+        } finally {
+            if (!silent) setExtraLoading(false);
+        }
     }, [device]);
 
     useEffect(() => {
@@ -52,7 +62,7 @@ const Plans = () => {
         try {
             await apiFetch("/api/subscriptions", { method: "POST", body: { deviceId: device.deviceId, packageId } });
             await refresh();
-            await loadExtra();
+            await loadExtra(true);
             toast.success("Plan activated. Your water is on!");
         } catch (e) {
             toast.error(e.message);
@@ -63,6 +73,7 @@ const Plans = () => {
 
     if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
+    if (extraLoading) return <WaterLoader center />;
 
     return (
         <div>

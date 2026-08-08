@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { FiDroplet, FiArrowRight, FiAlertTriangle, FiFileText } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
 import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
@@ -22,10 +23,19 @@ const money = (n) => `Rs. ${Number(n || 0).toLocaleString(undefined, { minimumFr
 
 const Home = () => {
     const { device, mode, sub, bill, estimate, bills, usage, alerts, loading, setValve, acknowledgeAlert } = useMyWater();
+    const toast = useToast();
     const user = JSON.parse(localStorage.getItem("user") || "null");
 
     if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
+
+    const toggleValve = async () => {
+        try {
+            await setValve(device.userValveState === "closed" ? "open" : "closed");
+        } catch (e) {
+            toast.error(e.message);
+        }
+    };
 
     const postpaid = mode === "postpaid";
     const active = sub && sub.status === "active";
@@ -156,7 +166,7 @@ const Home = () => {
                     <div className="flex flex-1 items-center justify-center py-2">
                         <WaterPulse
                             device={device}
-                            onToggle={() => setValve(device.userValveState === "closed" ? "open" : "closed")}
+                            onToggle={toggleValve}
                         />
                     </div>
                 </div>

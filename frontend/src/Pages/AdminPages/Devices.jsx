@@ -8,7 +8,7 @@ import AddDeviceModal from "../../Components/AdminComponents/AddDeviceModal.jsx"
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 6;
 
 const Devices = () => {
     const toast = useToast();

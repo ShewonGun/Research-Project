@@ -1,6 +1,7 @@
 import Device from "../models/Device.js";
 import Subscription from "../models/Subscription.js";
 import Bill from "../models/Bill.js";
+import Alert from "../models/Alert.js";
 
 // A user sees only their own devices; an admin sees all.
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { owner: req.user._id });
@@ -101,6 +102,24 @@ export const setValve = async (req, res) => {
 
         const device = await Device.findOne({ _id: req.params.id, ...ownershipFilter(req) });
         if (!device) return res.status(404).json({ message: "Device not found" });
+
+        // Safety lock: while a leak alert is unresolved, the supply can't be
+        // reopened (admin gate → open/throttled, or household tap → open). The
+        // alert must be resolved ("marked fixed") first, so damage is inspected
+        // before water flows again.
+        const opensFlow = req.user.role === "admin" ? state !== "closed" : state === "open";
+        if (opensFlow) {
+            const openLeak = await Alert.findOne({
+                device: device._id,
+                status: { $in: ["active", "acknowledged"] },
+            });
+            if (openLeak) {
+                return res.status(409).json({
+                    message:
+                        "This connection has an unresolved leak alert. Mark the leak as fixed before restoring the supply.",
+                });
+            }
+        }
 
         if (req.user.role === "admin") {
             // Provider gate — the authoritative supply valve.

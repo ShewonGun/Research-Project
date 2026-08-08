@@ -6,7 +6,7 @@ import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.j
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const statusStyles = {
     open: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",

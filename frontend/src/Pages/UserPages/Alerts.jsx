@@ -5,6 +5,9 @@ import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+
+const PAGE_SIZE = 5;
 
 const severityChip = {
     critical: "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400",
@@ -36,6 +39,9 @@ const Alerts = () => {
     const [all, setAll] = useState([]);
     const [filter, setFilter] = useState("open");
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(1);
+
+    useEffect(() => setPage(1), [filter]);
 
     const load = useCallback(async () => {
         try {
@@ -76,6 +82,7 @@ const Alerts = () => {
     const list = all.filter((a) =>
         filter === "open" ? a.status !== "resolved" : filter === "resolved" ? a.status === "resolved" : true
     );
+    const paged = list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div>
@@ -117,7 +124,7 @@ const Alerts = () => {
                         <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Your water is flowing normally.</p>
                     </div>
                 ) : (
-                    list.map((a) => {
+                    paged.map((a) => {
                         const burst = a.type === "burst";
                         return (
                             <div key={a._id} className="flex items-start gap-3 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -167,6 +174,8 @@ const Alerts = () => {
                     })
                 )}
             </div>
+
+            <Pagination page={page} pageSize={PAGE_SIZE} total={list.length} onChange={setPage} />
         </div>
     );
 };

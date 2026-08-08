@@ -1,7 +1,6 @@
 import { FiEdit2, FiTrash2 } from "react-icons/fi";
 
-const formatVolume = (liters) =>
-    liters >= 1000 ? `${(liters / 1000).toLocaleString()} m³` : `${liters.toLocaleString()} L`;
+const formatVolume = (liters) => `${Number(liters).toLocaleString()} L`;
 
 const WaterPackageCard = ({ pkg, onEdit, onDelete }) => {
     return (

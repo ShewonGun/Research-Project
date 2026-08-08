@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { FiX, FiDroplet, FiSliders, FiSlash, FiCpu, FiUser, FiArrowRight, FiAlertOctagon, FiAlertTriangle } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { useToast } from "../../Context/ToastContext.jsx";
 import FlowChart from "../SharedComponents/FlowChart.jsx";
 import UsageChart from "../SharedComponents/UsageChart.jsx";
 import AssignOwnerModal from "./AssignOwnerModal.jsx";
@@ -37,6 +38,7 @@ const relativeTime = (date) => {
 
 // Full detail / control view for one connection (device), shown in a modal.
 const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
+    const toast = useToast();
     const [sub, setSub] = useState(null);
     const [usage, setUsage] = useState(null);
     const [alerts, setAlerts] = useState([]);
@@ -72,8 +74,8 @@ const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
             const body = state === "throttled" ? { state, throttlePercent: pct } : { state };
             const data = await apiFetch(`/api/devices/${device._id}/valve`, { method: "PUT", body });
             onUpdated?.(data.device);
-        } catch {
-            /* parent reload surfaces errors */
+        } catch (e) {
+            toast.error(e.message);
         } finally {
             setBusy(false);
         }
@@ -93,6 +95,8 @@ const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
     };
 
     const postpaid = device.billingMode === "postpaid";
+    // Supply can't be reopened while a leak is unresolved (backend enforces this too).
+    const hasOpenLeak = alerts.some((a) => a.status === "active" || a.status === "acknowledged");
     const active = sub && sub.status === "active";
     const ratio = active ? Math.max(0, Math.min(1, sub.volumeRemaining / sub.volumeTotal)) : 0;
     const low = active && ratio < 0.1;
@@ -193,11 +197,13 @@ const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
                         <div className="grid grid-cols-3 gap-1 rounded-sm bg-slate-100 p-1 dark:bg-slate-800/80">
                             {valveSegments.map(({ key, label, icon: Icon, active: activeCls }) => {
                                 const isActive = device.adminValveState === key;
+                                // While a leak is unresolved, only "Close" stays available.
+                                const locked = hasOpenLeak && key !== "closed";
                                 return (
                                     <button
                                         key={key}
                                         type="button"
-                                        disabled={busy}
+                                        disabled={busy || locked}
                                         onClick={() => setValve(key, key === "throttled" ? throttlePct : undefined)}
                                         className={`flex items-center justify-center gap-1.5 rounded-sm py-1.5 text-xs font-medium transition disabled:opacity-50 ${
                                             isActive ? `bg-white shadow-sm dark:bg-slate-900 ${activeCls}` : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -209,6 +215,12 @@ const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
                                 );
                             })}
                         </div>
+                        {hasOpenLeak && (
+                            <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                                <FiAlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                Supply is locked while a leak is unresolved. Mark the alert as fixed to restore it.
+                            </p>
+                        )}
                         {device.adminValveState === "throttled" && (
                             <div className="mt-3 flex items-center gap-3">
                                 <input

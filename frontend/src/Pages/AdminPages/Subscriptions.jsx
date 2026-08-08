@@ -7,7 +7,7 @@ import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const filters = [
     { key: "all", label: "All" },

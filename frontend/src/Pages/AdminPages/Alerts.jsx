@@ -5,7 +5,7 @@ import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const relativeTime = (date) => {
     if (!date) return "";
@@ -171,7 +171,7 @@ const Alerts = () => {
                                                 Resolve
                                             </button>
                                         )}
-                                        {burst && a.autoAction === "valve-closed" && a.device?._id && (
+                                        {burst && a.autoAction === "valve-closed" && a.status === "resolved" && a.device?._id && (
                                             <button type="button" onClick={() => reopen(a.device._id)} className="text-xs font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400">
                                                 Reopen
                                             </button>
@@ -237,7 +237,7 @@ const Alerts = () => {
                                                         Resolve
                                                     </button>
                                                 )}
-                                                {burst && a.autoAction === "valve-closed" && a.device?._id && (
+                                                {burst && a.autoAction === "valve-closed" && a.status === "resolved" && a.device?._id && (
                                                     <button type="button" onClick={() => reopen(a.device._id)} className="text-xs font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400" title="Restore supply after inspecting">
                                                         Reopen
                                                     </button>
