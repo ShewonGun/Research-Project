@@ -12,6 +12,7 @@ const Devices = lazy(() => import('./Pages/AdminPages/Devices.jsx'))
 const Subscriptions = lazy(() => import('./Pages/AdminPages/Subscriptions.jsx'))
 const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
 const AdminAlerts = lazy(() => import('./Pages/AdminPages/Alerts.jsx'))
+const LeakAnalytics = lazy(() => import('./Pages/AdminPages/LeakAnalytics.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
 const AdminProfile = lazy(() => import('./Pages/AdminPages/Profile.jsx'))
 
@@ -58,6 +59,7 @@ const App = () => {
             <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="billing" element={<AdminBilling />} />
             <Route path="alerts" element={<AdminAlerts />} />
+            <Route path="analytics" element={<LeakAnalytics />} />
             <Route path="users" element={<Users />} />
             <Route path="profile" element={<AdminProfile />} />
           </Route>

@@ -24,8 +24,10 @@ const openAlert = (deviceId, type) =>
 
 // Analyse the latest sample. Mutates + saves `device` on burst (auto shut-off).
 // Returns the created Alert, or null. Assumes the current reading is already
-// stored (so the recent-window query includes it).
-export const runLeakDetection = async (device, flowRate) => {
+// stored (so the recent-window query includes it). `readingAt` is the triggering
+// reading's timestamp — recorded as the anomaly onset so detection latency
+// (createdAt − startedAt) is measurable.
+export const runLeakDetection = async (device, flowRate, readingAt = new Date()) => {
     // ---- Burst ----
     if (flowRate >= BURST_LPM) {
         if (await openAlert(device._id, "burst")) return null;
@@ -41,6 +43,7 @@ export const runLeakDetection = async (device, flowRate) => {
             severity: "critical",
             flowRate,
             autoAction: "valve-closed",
+            startedAt: readingAt,
             message: `Burst detected — ${flowRate.toFixed(1)} L/min. Supply was automatically shut off to prevent flooding.`,
         });
     }

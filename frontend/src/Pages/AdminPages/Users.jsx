@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { FiUserPlus, FiUsers, FiShield, FiHome } from "react-icons/fi";
+import { FiUserPlus, FiUsers, FiShield, FiHome, FiDownload } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import AddAdminModal from "../../Components/AdminComponents/AddAdminModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
@@ -66,21 +67,42 @@ const Users = () => {
 
     if (loading) return <WaterLoader center />;
 
+    const exportUsers = () => {
+        const rows = users.map((u) => ({
+            name: u.name || "",
+            email: u.email || "",
+            role: u.role === "admin" ? "Admin" : "Household",
+            phone: u.phone || "",
+            joined: u.createdAt ? new Date(u.createdAt).toISOString().slice(0, 10) : "",
+        }));
+        if (exportCsv(`users-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} users.`);
+    };
+
     return (
         <div>
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
                 <div>
                     <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Users</h1>
                     <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Households and admins on the platform.</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setAddOpen(true)}
-                    className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
-                >
-                    <FiUserPlus className="h-4 w-4" /> <span className="hidden sm:inline">New admin</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={exportUsers}
+                        disabled={users.length === 0}
+                        className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiDownload className="h-4 w-4" /> <span className="hidden sm:inline">Export CSV</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setAddOpen(true)}
+                        className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                    >
+                        <FiUserPlus className="h-4 w-4" /> <span className="hidden sm:inline">New admin</span>
+                    </button>
+                </div>
             </div>
 
             {/* Summary tiles */}

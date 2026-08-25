@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX, FiDownload } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
@@ -117,6 +118,99 @@ const Billing = () => {
     const collected = bills.filter((b) => b.status === "paid").reduce((s, b) => s + (b.amount || 0), 0);
     const paged = bills.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+    const exportBills = () => {
+        const rows = bills.map((b) => ({
+            connection: b.device?.name || "",
+            device_id: b.device?.deviceId || "",
+            amount: b.amount ?? "",
+            units: b.units ?? "",
+            volume_used_l: b.volumeUsed ?? "",
+            status: b.status,
+            period_start: b.periodStart ? new Date(b.periodStart).toISOString().slice(0, 10) : "",
+            period_end: b.periodEnd ? new Date(b.periodEnd).toISOString().slice(0, 10) : "",
+            due_date: b.dueDate ? new Date(b.dueDate).toISOString().slice(0, 10) : "",
+            paid_at: b.paidAt ? new Date(b.paidAt).toISOString().slice(0, 10) : "",
+        }));
+        if (exportCsv(`bills-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} bills.`);
+    };
+
+    // Printable billing statement — opens a print view; "Save as PDF" makes the PDF.
+    const printStatement = () => {
+        const w = window.open("", "_blank", "width=820,height=1040");
+        if (!w) {
+            toast.error("Allow pop-ups to download the statement.");
+            return;
+        }
+        const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+        const metric = (label, value) => `<div class="m"><div class="v">${esc(value)}</div><div class="l">${esc(label)}</div></div>`;
+
+        const tierRows = (tariff?.tiers || [])
+            .map((tier, i, arr) => {
+                const last = i === arr.length - 1;
+                const prev = i === 0 ? 0 : arr[i - 1].maxUnits;
+                const label = last ? `Above ${prev} units` : i === 0 ? `Up to ${tier.maxUnits} units` : `${prev}–${tier.maxUnits} units`;
+                return `<tr><td>${esc(label)}</td><td>Rs. ${Number(tier.rate).toLocaleString()} / unit</td></tr>`;
+            })
+            .join("");
+
+        const billRows = bills
+            .map(
+                (b) =>
+                    `<tr><td>${esc(b.device?.name || "—")} <span class="muted">${esc(b.device?.deviceId || "")}</span></td><td>${b.units ?? "—"}</td><td>${b.status === "open" ? "—" : money(b.amount)}</td><td>${esc(b.status)}</td><td>${b.dueDate ? new Date(b.dueDate).toLocaleDateString() : "—"}</td></tr>`
+            )
+            .join("");
+
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>AquaFlow — Billing Statement</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 32px; }
+  h1 { font-size: 20px; margin: 0; }
+  .sub { color: #64748b; font-size: 13px; margin-top: 2px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin: 26px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .m { border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; }
+  .m .v { font-size: 20px; font-weight: 600; }
+  .m .l { font-size: 11px; color: #64748b; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eef2f7; }
+  th { color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .bills td:nth-child(2), .bills th:nth-child(2), .bills td:nth-child(3), .bills th:nth-child(3) { text-align: right; }
+  .muted { color: #94a3b8; font-family: ui-monospace, monospace; font-size: 11px; }
+  .brand { color: #0284c7; font-weight: 700; }
+</style></head><body>
+  <h1><span class="brand">AquaFlow</span> — Billing Statement</h1>
+  <div class="sub">Generated ${esc(new Date().toLocaleString())}</div>
+
+  <h2>Summary</h2>
+  <div class="grid">
+    ${metric("Outstanding", money(outstandingTotal))}
+    ${metric("Collected", money(collected))}
+    ${metric("Open bills", outstanding.length)}
+  </div>
+
+  ${
+      tariff
+          ? `<h2>Tariff — ${esc(tariff.name || "")}</h2>
+  <div class="sub" style="margin-bottom:8px">${Number(tariff.unitLiters).toLocaleString()} L per unit · fixed charge Rs. ${Number(tariff.fixedCharge).toLocaleString()}</div>
+  <table><thead><tr><th>Block</th><th>Rate</th></tr></thead><tbody>${tierRows}</tbody></table>`
+          : ""
+  }
+
+  <h2>Bills</h2>
+  <table class="bills"><thead><tr><th>Connection</th><th>Units</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+  <tbody>${billRows || '<tr><td class="muted">No bills</td><td></td><td></td><td></td><td></td></tr>'}</tbody></table>
+</body></html>`);
+        w.document.close();
+        w.focus();
+        setTimeout(() => {
+            try {
+                w.print();
+            } catch {
+                /* user can print manually */
+            }
+        }, 300);
+    };
+
     return (
         <div>
             {/* Header */}
@@ -127,14 +221,32 @@ const Billing = () => {
                         Set the NWSDB tariff and close monthly cycles into payable bills.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setConfirmRun(true)}
-                    className="flex shrink-0 items-center justify-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700 sm:w-auto"
-                >
-                    <FiPlayCircle className="h-4 w-4" />
-                    Run billing
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={exportBills}
+                        disabled={bills.length === 0}
+                        className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiDownload className="h-4 w-4" /> <span className="hidden sm:inline">Export CSV</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={printStatement}
+                        disabled={bills.length === 0 && !tariff}
+                        className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiFileText className="h-4 w-4" /> <span className="hidden sm:inline">Statement (PDF)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setConfirmRun(true)}
+                        className="flex shrink-0 items-center justify-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                    >
+                        <FiPlayCircle className="h-4 w-4" />
+                        <span className="hidden sm:inline">Run billing</span>
+                    </button>
+                </div>
             </div>
 
             {/* Summary tiles */}

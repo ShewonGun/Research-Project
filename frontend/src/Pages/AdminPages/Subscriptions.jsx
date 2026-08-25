@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { FiPlus, FiCreditCard, FiZap, FiDollarSign } from "react-icons/fi";
+import { FiPlus, FiCreditCard, FiZap, FiDollarSign, FiDownload } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubscriptionModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
@@ -77,21 +78,46 @@ const Subscriptions = () => {
 
     if (loading) return <WaterLoader center />;
 
+    const exportSubs = () => {
+        const rows = subs.map((s) => ({
+            connection: s.device?.name || "",
+            device_id: s.device?.deviceId || "",
+            package: s.package?.name || "",
+            status: s.status,
+            volume_remaining_l: s.volumeRemaining ?? "",
+            volume_total_l: s.volumeTotal ?? "",
+            price: s.price ?? "",
+            created_at: s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : "",
+            expires_at: s.expiresAt ? new Date(s.expiresAt).toISOString().slice(0, 10) : "",
+        }));
+        if (exportCsv(`subscriptions-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} subscriptions.`);
+    };
+
     return (
         <div>
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
                 <div>
                     <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Subscriptions</h1>
                     <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Prepaid plans across all devices.</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setAssignOpen(true)}
-                    className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
-                >
-                    <FiPlus className="h-4 w-4" /> <span className="hidden sm:inline">Assign package</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={exportSubs}
+                        disabled={subs.length === 0}
+                        className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiDownload className="h-4 w-4" /> <span className="hidden sm:inline">Export CSV</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setAssignOpen(true)}
+                        className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                    >
+                        <FiPlus className="h-4 w-4" /> <span className="hidden sm:inline">Assign package</span>
+                    </button>
+                </div>
             </div>
 
             {/* Summary tiles */}

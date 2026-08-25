@@ -3,15 +3,19 @@
  * pipeline can be developed and demoed without real ESP32 hardware.
  *
  * Usage:
- *   node simulation/virtualDevice.js <deviceId> [intervalMs]
+ *   node simulation/virtualDevice.js <deviceId> [intervalMs] [scenario]
  *
  * The device must already be registered (POST /api/devices) so the backend
  * knows its deviceId. The simulator cycles through realistic patterns:
  *   idle → normal usage → tank refill → micro-leak → catastrophic burst
  * and honours the valve command the server returns (closed = no flow,
  * throttled = reduced flow), demonstrating remote shut-off / throttling.
- * 
- * RUN - node simulation/virtualDevice.js ESP32-A2 1000
+ *
+ * Scenario (4th arg): random (default) | clean | idle | normal | refill | leak | burst
+ *   clean = a realistic mix of idle / normal / refill that NEVER leaks or bursts.
+ *
+ * RUN - node simulation/virtualDevice.js ESP32-A2 1000          (random mix)
+ *       node simulation/virtualDevice.js ESP32-A2 1000 clean    (healthy, no leaks)
  */
 import dotenv from "dotenv";
 dotenv.config();
@@ -24,7 +28,8 @@ const scenarioArg = (process.argv[4] || "random").toLowerCase();
 
 if (!deviceId) {
     console.error("Usage: node simulation/virtualDevice.js <deviceId> [intervalMs] [scenario]");
-    console.error("  scenario: random (default) | idle | normal | refill | leak | burst");
+    console.error("  scenario: random (default) | clean | idle | normal | refill | leak | burst");
+    console.error("  clean = realistic mix (idle / normal / refill) that never triggers a leak or burst");
     process.exit(1);
 }
 
@@ -40,6 +45,10 @@ const forcedPattern = {
     burst: "burst",
 }[scenarioArg];
 
+// "clean" is a weighted mix of only the healthy patterns — never leaks/bursts.
+const cleanNames = ["idle", "normal-use", "tank-refill"];
+const isClean = ["clean", "healthy", "no-leak", "noleak"].includes(scenarioArg);
+
 // Flow profiles in litres/minute. Each tick picks behaviour, then we convert
 // the flow rate over the interval into a volume for that sample.
 const patterns = [
@@ -50,13 +59,14 @@ const patterns = [
     { name: "burst", base: 45, jitter: 10, weight: 6 },
 ];
 
-const pickPattern = () => {
-    const total = patterns.reduce((s, p) => s + p.weight, 0);
+const pickPattern = (names) => {
+    const pool = names ? patterns.filter((p) => names.includes(p.name)) : patterns;
+    const total = pool.reduce((s, p) => s + p.weight, 0);
     let r = Math.random() * total;
-    for (const p of patterns) {
+    for (const p of pool) {
         if ((r -= p.weight) <= 0) return p;
     }
-    return patterns[0];
+    return pool[0];
 };
 
 const rand = (base, jitter) => Math.max(0, base + (Math.random() * 2 - 1) * jitter);
@@ -67,7 +77,7 @@ let throttlePercent = 100;
 const byName = (name) => patterns.find((p) => p.name === name) || patterns[0];
 
 const tick = async () => {
-    const pattern = forcedPattern ? byName(forcedPattern) : pickPattern();
+    const pattern = forcedPattern ? byName(forcedPattern) : isClean ? pickPattern(cleanNames) : pickPattern();
     let flowRate = rand(pattern.base, pattern.jitter);
 
     // Apply the last valve command from the server.
@@ -104,7 +114,9 @@ const tick = async () => {
 };
 
 console.log(
-    `Virtual device "${deviceId}" → ${API_URL}  (every ${intervalMs}ms, scenario: ${forcedPattern || "random"}). Ctrl+C to stop.`
+    `Virtual device "${deviceId}" → ${API_URL}  (every ${intervalMs}ms, scenario: ${
+        forcedPattern || (isClean ? "clean" : "random")
+    }). Ctrl+C to stop.`
 );
 tick();
 setInterval(tick, intervalMs);

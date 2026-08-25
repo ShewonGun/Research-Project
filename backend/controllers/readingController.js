@@ -70,11 +70,12 @@ export const ingestReading = async (req, res) => {
             return res.status(404).json({ message: "Unknown device" });
         }
 
+        const readingAt = timestamp ? new Date(timestamp) : new Date();
         await Reading.create({
             device: device._id,
             flowRate,
             volume: volume ?? 0,
-            timestamp: timestamp ? new Date(timestamp) : new Date(),
+            timestamp: readingAt,
         });
 
         // Mark the device online and record the heartbeat.
@@ -91,7 +92,8 @@ export const ingestReading = async (req, res) => {
         }
 
         // Analyse the flow stream for leaks/bursts (may auto-shut on a burst).
-        await runLeakDetection(device, flowRate);
+        // Pass the reading's timestamp as the anomaly-onset for latency metrics.
+        await runLeakDetection(device, flowRate, readingAt);
 
         // Return the EFFECTIVE valve command (both provider gate + household tap).
         return res.status(201).json({

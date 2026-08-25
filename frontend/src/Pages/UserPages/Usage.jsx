@@ -1,5 +1,7 @@
-import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet } from "react-icons/fi";
+import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet, FiDownload } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
+import { useToast } from "../../Context/ToastContext.jsx";
+import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
@@ -9,6 +11,7 @@ import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 
 const Usage = () => {
     const { device, sub, usage, loading } = useMyWater();
+    const toast = useToast();
 
     if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
@@ -24,11 +27,29 @@ const Usage = () => {
     const daysLeft = active && avgDaily > 0 ? sub.volumeRemaining / avgDaily : null;
     const runOut = daysLeft != null ? new Date(Date.now() + daysLeft * 86400000) : null;
 
+    const exportUsage = () => {
+        const rows = daily.map((d) => ({ date: d.date, litres: Number(d.volume || 0).toFixed(2) }));
+        if (exportCsv(`usage-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} days of usage.`);
+        else toast.info("No usage to export yet.");
+    };
+
     return (
         <div>
             {/* Header */}
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">Usage</h1>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Your water consumption and forecast.</p>
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <h1 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">Usage</h1>
+                    <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Your water consumption and forecast.</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={exportUsage}
+                    disabled={daily.length === 0}
+                    className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                    <FiDownload className="h-4 w-4" /> <span className="hidden sm:inline">Export CSV</span>
+                </button>
+            </div>
 
             {/* Stat tiles */}
             <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
