@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiUser, FiLock, FiShield } from "react-icons/fi";
+import { FiUser, FiLock, FiShield, FiEdit2, FiX } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import PasswordInput from "../../Components/SharedComponents/PasswordInput.jsx";
@@ -17,14 +17,21 @@ const Profile = () => {
     // Profile form
     const [name, setName] = useState(stored?.name || "");
     const [phone, setPhone] = useState(stored?.phone || "");
+    const [address, setAddress] = useState(stored?.address || "");
+    const [accountNumber, setAccountNumber] = useState(stored?.accountNumber || "");
     const [savingProfile, setSavingProfile] = useState(false);
+    const [editingProfile, setEditingProfile] = useState(false);
 
     // Password form
     const [password, setPassword] = useState("");
     const [confirm, setConfirm] = useState("");
     const [savingPw, setSavingPw] = useState(false);
 
-    const profileDirty = name.trim() !== (user?.name || "") || (phone || "") !== (user?.phone || "");
+    const profileDirty =
+        name.trim() !== (user?.name || "") ||
+        (phone || "") !== (user?.phone || "") ||
+        (address || "") !== (user?.address || "") ||
+        (accountNumber || "") !== (user?.accountNumber || "");
 
     const saveProfile = async (e) => {
         e.preventDefault();
@@ -34,15 +41,27 @@ const Profile = () => {
         }
         setSavingProfile(true);
         try {
-            const data = await apiFetch("/api/users/profile", { method: "PUT", body: { name: name.trim(), phone } });
+            const data = await apiFetch("/api/users/profile", {
+                method: "PUT",
+                body: { name: name.trim(), phone, address, accountNumber },
+            });
             setUser(data.user);
             localStorage.setItem("user", JSON.stringify(data.user));
+            setEditingProfile(false);
             toast.success("Profile updated.");
         } catch (err) {
             toast.error(err.message);
         } finally {
             setSavingProfile(false);
         }
+    };
+
+    const cancelEditProfile = () => {
+        setName(user?.name || "");
+        setPhone(user?.phone || "");
+        setAddress(user?.address || "");
+        setAccountNumber(user?.accountNumber || "");
+        setEditingProfile(false);
     };
 
     const savePassword = async (e) => {
@@ -93,6 +112,10 @@ const Profile = () => {
                         <dt className="text-xs text-slate-400 dark:text-slate-500">Phone</dt>
                         <dd className="truncate font-medium text-slate-900 dark:text-white">{user?.phone || "—"}</dd>
                     </div>
+                    <div className="flex items-center justify-between gap-2">
+                        <dt className="text-xs text-slate-400 dark:text-slate-500">Account #</dt>
+                        <dd className="truncate font-medium text-slate-900 dark:text-white">{user?.accountNumber || "—"}</dd>
+                    </div>
                     {user?.createdAt && (
                         <div className="flex items-center justify-between gap-2">
                             <dt className="text-xs text-slate-400 dark:text-slate-500">Member since</dt>
@@ -108,21 +131,48 @@ const Profile = () => {
             <div className="space-y-4 lg:col-span-2">
             {/* Profile details */}
             <form onSubmit={saveProfile} className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
-                        <FiUser className="h-4 w-4" />
-                    </span>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Personal details</p>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
+                            <FiUser className="h-4 w-4" />
+                        </span>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Personal details</p>
+                    </div>
+                    {!editingProfile ? (
+                        <button
+                            type="button"
+                            onClick={() => setEditingProfile(true)}
+                            className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                        >
+                            <FiEdit2 className="h-3.5 w-3.5" /> Edit
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={cancelEditProfile}
+                            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                        >
+                            <FiX className="h-3.5 w-3.5" /> Cancel
+                        </button>
+                    )}
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Name</span>
-                        <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+                        <input value={name} onChange={(e) => setName(e.target.value)} disabled={!editingProfile} className={inputCls} />
                     </label>
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Phone</span>
-                        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" className={inputCls} />
+                        <input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Account number</span>
+                        <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Address</span>
+                        <input value={address} onChange={(e) => setAddress(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
                     </label>
                     <label className="flex flex-col gap-1.5 sm:col-span-2">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Email</span>
@@ -131,15 +181,17 @@ const Profile = () => {
                     </label>
                 </div>
 
-                <div className="mt-5">
-                    <button
-                        type="submit"
-                        disabled={savingProfile || !profileDirty}
-                        className="rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-                    >
-                        {savingProfile ? "Saving…" : "Save changes"}
-                    </button>
-                </div>
+                {editingProfile && (
+                    <div className="mt-5">
+                        <button
+                            type="submit"
+                            disabled={savingProfile || !profileDirty}
+                            className="rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                        >
+                            {savingProfile ? "Saving…" : "Save changes"}
+                        </button>
+                    </div>
+                )}
             </form>
 
             {/* Password */}

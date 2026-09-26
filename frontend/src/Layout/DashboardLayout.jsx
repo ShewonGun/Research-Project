@@ -1,10 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiUsers, FiLogOut, FiMenu, FiX, FiTrendingUp, FiChevronDown, FiServer, FiDollarSign, FiShield, FiSettings } from "react-icons/fi";
-import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
-import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
-import Logo from "../SharedComponents/Logo.jsx";
-import { PageFade } from "../SharedComponents/Motion.jsx";
+import { AnimatePresence, motion } from "motion/react";
+import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiAlertOctagon, FiBell, FiUsers, FiLogOut, FiMenu, FiX, FiTrendingUp, FiChevronDown, FiChevronRight, FiServer, FiDollarSign, FiShield, FiSettings } from "react-icons/fi";
+import ThemeToggle from "../Components/SharedComponents/ThemeToggle.jsx";
+import ConfirmationBox from "../Components/SharedComponents/ConfirmationBox.jsx";
+import Logo from "../Components/SharedComponents/Logo.jsx";
+import { PageFade } from "../Components/SharedComponents/Motion.jsx";
+import { apiFetch } from "../lib/api.js";
+
+const relativeTime = (date) => {
+    if (!date) return "";
+    const s = Math.floor((Date.now() - new Date(date)) / 1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+};
 
 const navSections = [
     {
@@ -42,12 +53,47 @@ const navSections = [
     },
 ];
 
+// Flat page list (for breadcrumbs) — nav items plus routes that aren't in the sidebar.
+const flatPages = [
+    ...navSections.flatMap((s) => s.items.map((it) => ({ ...it, section: s.title }))),
+    { to: "/dashboard/profile", label: "Profile", end: true, section: null },
+];
+
 const DashboardLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const user = JSON.parse(localStorage.getItem("user") || "null");
     const [confirmLogout, setConfirmLogout] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [alerts, setAlerts] = useState([]);
+    const [alertsOpen, setAlertsOpen] = useState(false);
+    const bellRef = useRef(null);
+
+    // Network-wide active alerts — polled so the bell stays live from any page.
+    const loadAlerts = useCallback(async () => {
+        try {
+            const data = await apiFetch("/api/alerts?limit=200");
+            setAlerts(data.alerts || []);
+        } catch {
+            /* background poll — stay quiet on transient errors */
+        }
+    }, []);
+
+    useEffect(() => {
+        loadAlerts();
+        const id = setInterval(loadAlerts, 8000);
+        return () => clearInterval(id);
+    }, [loadAlerts]);
+
+    // Close the alerts dropdown on an outside click.
+    useEffect(() => {
+        if (!alertsOpen) return;
+        const onPointerDown = (e) => {
+            if (bellRef.current && !bellRef.current.contains(e.target)) setAlertsOpen(false);
+        };
+        document.addEventListener("mousedown", onPointerDown);
+        return () => document.removeEventListener("mousedown", onPointerDown);
+    }, [alertsOpen]);
 
     // Is the current route inside this section?
     const sectionActive = (section) =>
@@ -68,6 +114,7 @@ const DashboardLayout = () => {
     // Close the mobile drawer on navigation; keep the active section revealed.
     useEffect(() => {
         setMenuOpen(false);
+        setAlertsOpen(false);
         setOpenSections((prev) => {
             const next = { ...prev };
             navSections.forEach((s) => {
@@ -83,6 +130,15 @@ const DashboardLayout = () => {
         localStorage.removeItem("user");
         navigate("/login", { replace: true });
     };
+
+    // Breadcrumb trail for the current route, e.g. Console > Network > Connections.
+    const currentPage = flatPages.find((p) =>
+        p.end ? location.pathname === p.to : location.pathname === p.to || location.pathname.startsWith(`${p.to}/`)
+    );
+    const breadcrumb = ["Console", currentPage?.section, currentPage?.label].filter(Boolean);
+
+    const activeAlerts = alerts.filter((a) => a.status === "active");
+    const criticalCount = activeAlerts.filter((a) => a.severity === "critical").length;
 
     const linkBase = "flex items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium transition";
     const inactive = "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white";
@@ -204,6 +260,18 @@ const DashboardLayout = () => {
                         <FiMenu className="h-5 w-5" />
                     </button>
 
+                    {/* Breadcrumb — current location, e.g. Console > Network > Connections */}
+                    <div className="hidden items-center gap-1.5 text-sm md:flex">
+                        {breadcrumb.map((part, i) => (
+                            <span key={part} className="flex items-center gap-1.5">
+                                {i > 0 && <FiChevronRight className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />}
+                                <span className={i === breadcrumb.length - 1 ? "font-medium text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"}>
+                                    {part}
+                                </span>
+                            </span>
+                        ))}
+                    </div>
+
                     {/* Brand — centered on mobile only (sidebar owns it on desktop) */}
                     <div className="pointer-events-none absolute inset-x-0 flex items-center justify-center gap-2 md:hidden">
                         <Logo className="h-6 w-6" />
@@ -212,6 +280,90 @@ const DashboardLayout = () => {
 
                     {/* Right actions */}
                     <div className="ml-auto flex items-center gap-2">
+                        {/* Alerts bell */}
+                        <div className="relative" ref={bellRef}>
+                            <button
+                                type="button"
+                                onClick={() => setAlertsOpen((o) => !o)}
+                                aria-label="Alerts"
+                                className="relative flex h-9 w-9 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                                <FiBell className="h-4.5 w-4.5" />
+                                {activeAlerts.length > 0 && (
+                                    <span
+                                        className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900 ${
+                                            criticalCount > 0 ? "bg-red-500" : "bg-amber-500"
+                                        }`}
+                                    />
+                                )}
+                            </button>
+
+                            <AnimatePresence>
+                                {alertsOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute right-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+                                    >
+                                        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                                            <p className="text-sm font-semibold text-slate-900 dark:text-white">Active alerts</p>
+                                            {activeAlerts.length > 0 && (
+                                                <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                                                    {activeAlerts.length}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {activeAlerts.length === 0 ? (
+                                            <p className="px-4 py-8 text-center text-xs text-slate-400 dark:text-slate-500">
+                                                No active alerts. Network is healthy.
+                                            </p>
+                                        ) : (
+                                            <ul className="max-h-80 overflow-y-auto">
+                                                {activeAlerts.slice(0, 6).map((a) => {
+                                                    const burst = a.type === "burst";
+                                                    return (
+                                                        <li key={a._id} className="border-b border-slate-100 px-4 py-2.5 last:border-0 dark:border-slate-800">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <span
+                                                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                                                                        burst
+                                                                            ? "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400"
+                                                                            : "bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400"
+                                                                    }`}
+                                                                >
+                                                                    {burst ? <FiAlertOctagon className="h-3.5 w-3.5" /> : <FiAlertTriangle className="h-3.5 w-3.5" />}
+                                                                </span>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="truncate text-xs font-medium text-slate-900 dark:text-white">
+                                                                        {burst ? "Burst" : "Micro-leak"} · {a.device?.name || a.device?.deviceId || "Unknown device"}
+                                                                    </p>
+                                                                    <p className="text-[11px] text-slate-400 dark:text-slate-500">{relativeTime(a.createdAt)}</p>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    );
+                                                })}
+                                            </ul>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setAlertsOpen(false);
+                                                navigate("/dashboard/alerts");
+                                            }}
+                                            className="block w-full border-t border-slate-100 px-4 py-2.5 text-center text-xs font-medium text-sky-600 transition hover:bg-slate-50 dark:border-slate-800 dark:text-sky-400 dark:hover:bg-slate-800"
+                                        >
+                                            View all alerts
+                                        </button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
                         <ThemeToggle />
                         <NavLink
                             to="/dashboard/profile"

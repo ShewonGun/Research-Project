@@ -6,6 +6,9 @@ import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubs
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import StatTile from "../../Components/SharedComponents/StatTile.jsx";
+import SearchInput from "../../Components/SharedComponents/SearchInput.jsx";
+import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 
 const PAGE_SIZE = 5;
@@ -30,12 +33,13 @@ const Subscriptions = () => {
     const [subs, setSubs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("all");
+    const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [assignOpen, setAssignOpen] = useState(false);
     const [cancelling, setCancelling] = useState(null);
     const [cancelLoading, setCancelLoading] = useState(false);
 
-    useEffect(() => setPage(1), [filter]);
+    useEffect(() => setPage(1), [filter, search]);
 
     const load = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -70,7 +74,10 @@ const Subscriptions = () => {
         }
     };
 
-    const shown = filter === "all" ? subs : subs.filter((s) => s.status === filter);
+    const q = search.trim().toLowerCase();
+    const shown = subs
+        .filter((s) => filter === "all" || s.status === filter)
+        .filter((s) => !q || [s.device?.name, s.device?.deviceId, s.package?.name].some((v) => v?.toLowerCase().includes(q)));
     const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const activeSubs = subs.filter((s) => s.status === "active");
     const totalRemaining = activeSubs.reduce((sum, s) => sum + s.volumeRemaining, 0);
@@ -121,34 +128,39 @@ const Subscriptions = () => {
             </div>
 
             {/* Summary tiles */}
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Tile label="Active plans" value={activeSubs.length} icon={FiCreditCard} tone="emerald" />
-                <Tile label="Prepaid volume left" value={`${totalRemaining.toFixed(0)} L`} icon={FiZap} tone="sky" />
-                <Tile label="Total revenue" value={`Rs. ${revenue.toLocaleString()}`} icon={FiDollarSign} tone="violet" />
-            </div>
+            <StaggerGrid className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StaggerItem><StatTile label="Active plans" value={activeSubs.length} icon={FiCreditCard} tone="emerald" /></StaggerItem>
+                <StaggerItem><StatTile label="Prepaid volume left" value={`${totalRemaining.toFixed(0)} L`} icon={FiZap} tone="sky" /></StaggerItem>
+                <StaggerItem><StatTile label="Total revenue" value={`Rs. ${revenue.toLocaleString()}`} icon={FiDollarSign} tone="violet" /></StaggerItem>
+            </StaggerGrid>
 
-            {/* Filter */}
-            <div className="mt-5 flex flex-wrap gap-1">
-                {filters.map((f) => (
-                    <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => setFilter(f.key)}
-                        className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                            filter === f.key
-                                ? "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400"
-                                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                        }`}
-                    >
-                        {f.label}
-                    </button>
-                ))}
+            {/* Filter + search */}
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex flex-wrap gap-1 rounded-sm bg-slate-100 p-1 dark:bg-slate-800/80">
+                    {filters.map((f) => (
+                        <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setFilter(f.key)}
+                            className={`rounded-sm px-3 py-1 text-xs font-medium transition ${
+                                filter === f.key
+                                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                            }`}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+                <SearchInput value={search} onChange={setSearch} placeholder="Search by device, ID, or package…" className="w-full sm:w-64" />
             </div>
 
             {/* Table */}
             {shown.length === 0 ? (
                 <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">No subscriptions here.</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {q ? `No subscriptions match "${search}".` : "No subscriptions here."}
+                    </p>
                 </div>
             ) : (
                 <>
@@ -230,7 +242,7 @@ const Subscriptions = () => {
                                 const ratio = Math.max(0, Math.min(1, s.volumeRemaining / s.volumeTotal));
                                 const low = s.status === "active" && ratio < 0.1;
                                 return (
-                                    <tr key={s._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                                    <tr key={s._id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
                                         <td className="px-4 py-3">
                                             <p className="font-medium text-slate-900 dark:text-white">{s.device?.name || "—"}</p>
                                             <p className="font-mono text-xs text-slate-400 dark:text-slate-500">{s.device?.deviceId}</p>
@@ -294,23 +306,5 @@ const Subscriptions = () => {
         </div>
     );
 };
-
-const tones = {
-    sky: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
-    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
-    violet: "bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400",
-};
-
-const Tile = ({ label, value, icon: Icon, tone }) => (
-    <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-            <span className={`flex h-7 w-7 items-center justify-center rounded-md ${tones[tone]}`}>
-                <Icon className="h-4 w-4" />
-            </span>
-        </div>
-        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</p>
-    </div>
-);
 
 export default Subscriptions;

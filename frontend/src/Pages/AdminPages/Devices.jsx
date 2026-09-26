@@ -7,6 +7,8 @@ import DeviceCard from "../../Components/AdminComponents/DeviceCard.jsx";
 import AddDeviceModal from "../../Components/AdminComponents/AddDeviceModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+import SearchInput from "../../Components/SharedComponents/SearchInput.jsx";
+import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 
 const PAGE_SIZE = 6;
 
@@ -16,8 +18,11 @@ const Devices = () => {
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
     const [page, setPage] = useState(1);
+    const [search, setSearch] = useState("");
     const [deleting, setDeleting] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    useEffect(() => setPage(1), [search]);
 
     const load = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -59,6 +64,14 @@ const Devices = () => {
 
     if (loading) return <WaterLoader center />;
 
+    const q = search.trim().toLowerCase();
+    const shown = !q
+        ? devices
+        : devices.filter((d) =>
+              [d.name, d.deviceId, d.location, d.owner?.name].some((v) => v?.toLowerCase().includes(q))
+          );
+    const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
     return (
         <div>
             {/* Header */}
@@ -91,12 +104,24 @@ const Devices = () => {
                 </div>
             ) : (
                 <>
-                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {devices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((device) => (
-                            <DeviceCard key={device._id} device={device} onDelete={setDeleting} onUpdated={patchDevice} />
-                        ))}
-                    </div>
-                    <Pagination page={page} pageSize={PAGE_SIZE} total={devices.length} onChange={setPage} />
+                    <SearchInput value={search} onChange={setSearch} placeholder="Search by name, device ID, location, or owner…" className="mt-5 max-w-sm" />
+
+                    {shown.length === 0 ? (
+                        <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">No connections match "{search}".</p>
+                        </div>
+                    ) : (
+                        <>
+                            <StaggerGrid className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {paged.map((device) => (
+                                    <StaggerItem key={device._id}>
+                                        <DeviceCard device={device} onDelete={setDeleting} onUpdated={patchDevice} />
+                                    </StaggerItem>
+                                ))}
+                            </StaggerGrid>
+                            <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
+                        </>
+                    )}
                 </>
             )}
 

@@ -5,7 +5,7 @@ import Signup from './Pages/SharedPages/Signup.jsx'
 import WaterLoader from './Components/SharedComponents/WaterLoader.jsx'
 
 // Lazy-load each role's tree so a household never downloads admin code (and vice-versa).
-const DashboardLayout = lazy(() => import('./Components/AdminComponents/DashboardLayout.jsx'))
+const DashboardLayout = lazy(() => import('./Layout/DashboardLayout.jsx'))
 const Dashboard = lazy(() => import('./Pages/AdminPages/Dashboard.jsx'))
 const WaterPackages = lazy(() => import('./Pages/AdminPages/WaterPackages.jsx'))
 const Devices = lazy(() => import('./Pages/AdminPages/Devices.jsx'))
@@ -16,7 +16,7 @@ const LeakAnalytics = lazy(() => import('./Pages/AdminPages/LeakAnalytics.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
 const AdminProfile = lazy(() => import('./Pages/AdminPages/Profile.jsx'))
 
-const UserLayout = lazy(() => import('./Components/UserComponents/UserLayout.jsx'))
+const UserLayout = lazy(() => import('./Layout/UserLayout.jsx'))
 const Home = lazy(() => import('./Pages/UserPages/Home.jsx'))
 const Usage = lazy(() => import('./Pages/UserPages/Usage.jsx'))
 const Plans = lazy(() => import('./Pages/UserPages/Plans.jsx'))

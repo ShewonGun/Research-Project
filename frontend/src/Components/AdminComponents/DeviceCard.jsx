@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiTrash2, FiCpu, FiExternalLink } from "react-icons/fi";
+import { FiTrash2, FiCpu, FiExternalLink, FiUser, FiCreditCard, FiMapPin, FiClock } from "react-icons/fi";
 import ConnectionDetailModal from "./ConnectionDetailModal.jsx";
 
 const valveStyles = {
@@ -21,7 +21,7 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
     const [detailOpen, setDetailOpen] = useState(false);
 
     return (
-        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="group overflow-hidden rounded-sm border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
             {/* Top accent line */}
             <div className="h-0.5 bg-linear-to-r from-cyan-500 to-blue-600" />
 
@@ -53,18 +53,18 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
 
             {/* Key facts */}
             <div className="mt-4 grid grid-cols-2 gap-2">
-                <Meta label="Owner" value={device.owner?.name || "Unassigned"} muted={!device.owner} />
-                <Meta label="Billing" value={device.billingMode} capitalize />
-                <Meta label="Location" value={device.location || "—"} />
-                <Meta label="Last seen" value={relativeTime(device.lastSeen)} />
+                <Meta icon={FiUser} label="Owner" value={device.owner?.name || "Unassigned"} muted={!device.owner} />
+                <Meta icon={FiCreditCard} label="Billing" value={device.billingMode} capitalize />
+                <Meta icon={FiMapPin} label="Location" value={device.location || "—"} />
+                <Meta icon={FiClock} label="Last seen" value={relativeTime(device.lastSeen)} />
             </div>
 
             {/* Footer */}
-            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
+            <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button
                     type="button"
                     onClick={() => setDetailOpen(true)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-sky-600 transition hover:text-sky-500 dark:text-sky-400"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100 dark:bg-sky-950/50 dark:text-sky-400 dark:hover:bg-sky-950"
                 >
                     View details <FiExternalLink className="h-3.5 w-3.5" />
                 </button>
@@ -72,7 +72,7 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
                     type="button"
                     onClick={() => onDelete(device)}
                     aria-label="Delete device"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                 >
                     <FiTrash2 className="h-3.5 w-3.5" />
                 </button>
@@ -89,9 +89,12 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
     );
 };
 
-const Meta = ({ label, value, muted, capitalize }) => (
+const Meta = ({ icon: Icon, label, value, muted, capitalize }) => (
     <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/30">
-        <p className="text-[11px] text-slate-400 dark:text-slate-500">{label}</p>
+        <p className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
+            {Icon && <Icon className="h-3 w-3" />}
+            {label}
+        </p>
         <p
             className={`mt-0.5 truncate text-xs font-medium ${capitalize ? "capitalize " : ""}${
                 muted ? "text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-300"

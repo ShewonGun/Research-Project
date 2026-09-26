@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
+import { AnimatePresence, motion } from "motion/react";
 import { apiFetch } from "../../lib/api.js";
 import { useToast } from "../../Context/ToastContext.jsx";
+import { useModalDismiss } from "../SharedComponents/useModalDismiss.js";
 
 const emptyForm = {
     name: "",
@@ -34,7 +36,7 @@ const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
         );
     }, [open, editing]);
 
-    if (!open) return null;
+    const panelRef = useModalDismiss(open, onClose);
 
     const set = (key) => (e) =>
         setForm((f) => ({ ...f, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
@@ -67,74 +69,88 @@ const AddWaterPackageModal = ({ open, editing, onClose, onSaved }) => {
     };
 
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
-            onClick={onClose}
-        >
-            <div
-                className="w-full max-w-sm rounded-sm border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                        {editing ? "Edit package" : "New package"}
-                    </h2>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
-                        aria-label="Close"
+        <AnimatePresence>
+            {open && (
+                <motion.div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+                    onClick={onClose}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                >
+                    <motion.div
+                        ref={panelRef}
+                        tabIndex={-1}
+                        className="w-full max-w-sm rounded-sm border border-slate-200 bg-white p-5 shadow-xl outline-none dark:border-slate-800 dark:bg-slate-900"
+                        onClick={(e) => e.stopPropagation()}
+                        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.97, y: 8 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
                     >
-                        <FiX className="h-4 w-4" />
-                    </button>
-                </div>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                                {editing ? "Edit package" : "New package"}
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+                                aria-label="Close"
+                            >
+                                <FiX className="h-4 w-4" />
+                            </button>
+                        </div>
 
-                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-                    <Field label="Name">
-                        <input type="text" required value={form.name} onChange={set("name")} className={inputCls} placeholder="Basic 5000L" />
-                    </Field>
+                        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                            <Field label="Name">
+                                <input type="text" required value={form.name} onChange={set("name")} className={inputCls} placeholder="Basic 5000L" />
+                            </Field>
 
-                    <Field label="Description">
-                        <input type="text" value={form.description} onChange={set("description")} className={inputCls} placeholder="Monthly prepaid plan" />
-                    </Field>
+                            <Field label="Description">
+                                <input type="text" value={form.description} onChange={set("description")} className={inputCls} placeholder="Monthly prepaid plan" />
+                            </Field>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <Field label="Volume (L)">
-                            <input type="number" required min="1" value={form.volumeLiters} onChange={set("volumeLiters")} className={inputCls} placeholder="5000" />
-                        </Field>
-                        <Field label="Price (Rs.)">
-                            <input type="number" required min="0" value={form.price} onChange={set("price")} className={inputCls} placeholder="1500" />
-                        </Field>
-                    </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Volume (L)">
+                                    <input type="number" required min="1" value={form.volumeLiters} onChange={set("volumeLiters")} className={inputCls} placeholder="5000" />
+                                </Field>
+                                <Field label="Price (Rs.)">
+                                    <input type="number" required min="0" value={form.price} onChange={set("price")} className={inputCls} placeholder="1500" />
+                                </Field>
+                            </div>
 
-                    <Field label="Validity (days)">
-                        <input type="number" min="1" value={form.validityDays} onChange={set("validityDays")} className={inputCls} />
-                    </Field>
+                            <Field label="Validity (days)">
+                                <input type="number" min="1" value={form.validityDays} onChange={set("validityDays")} className={inputCls} />
+                            </Field>
 
-                    <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                        <input type="checkbox" checked={form.isActive} onChange={set("isActive")} className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-                        Available for purchase
-                    </label>
+                            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                                <input type="checkbox" checked={form.isActive} onChange={set("isActive")} className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                                Available for purchase
+                            </label>
 
-                    <div className="flex justify-end gap-2 pt-1">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-sm px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="rounded-sm bg-sky-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-60"
-                        >
-                            {saving ? "Saving…" : editing ? "Save" : "Create"}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="rounded-sm px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="rounded-sm bg-sky-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-60"
+                                >
+                                    {saving ? "Saving…" : editing ? "Save" : "Create"}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };
 

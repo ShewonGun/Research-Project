@@ -7,6 +7,8 @@ import AddWaterPackageModal from "../../Components/AdminComponents/AddWaterPacka
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import SearchInput from "../../Components/SharedComponents/SearchInput.jsx";
+import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 
 const PAGE_SIZE = 8;
 
@@ -19,16 +21,19 @@ const WaterPackages = () => {
     const [deleting, setDeleting] = useState(null); // package pending delete confirmation
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [page, setPage] = useState(1);
+    const [search, setSearch] = useState("");
 
-    const load = useCallback(async () => {
-        setLoading(true);
+    useEffect(() => setPage(1), [search]);
+
+    const load = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const data = await apiFetch("/api/water-packages");
             setPackages(data.packages || []);
         } catch (err) {
-            toast.error(err.message);
+            if (!silent) toast.error(err.message);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [toast]);
 
@@ -52,7 +57,7 @@ const WaterPackages = () => {
         try {
             await apiFetch(`/api/water-packages/${deleting._id}`, { method: "DELETE" });
             setDeleting(null);
-            await load();
+            await load(true);
             toast.success("Package deleted.");
         } catch (err) {
             toast.error(err.message);
@@ -62,6 +67,10 @@ const WaterPackages = () => {
     };
 
     if (loading) return <WaterLoader center />;
+
+    const q = search.trim().toLowerCase();
+    const shown = !q ? packages : packages.filter((p) => [p.name, p.description].some((v) => v?.toLowerCase().includes(q)));
+    const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div>
@@ -95,12 +104,24 @@ const WaterPackages = () => {
                 </div>
             ) : (
                 <>
-                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-                        {packages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((pkg) => (
-                            <WaterPackageCard key={pkg._id} pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
-                        ))}
-                    </div>
-                    <Pagination page={page} pageSize={PAGE_SIZE} total={packages.length} onChange={setPage} />
+                    <SearchInput value={search} onChange={setSearch} placeholder="Search by name or description…" className="mt-5 max-w-sm" />
+
+                    {shown.length === 0 ? (
+                        <div className="mt-6 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">No packages match "{search}".</p>
+                        </div>
+                    ) : (
+                        <>
+                            <StaggerGrid className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                                {paged.map((pkg) => (
+                                    <StaggerItem key={pkg._id}>
+                                        <WaterPackageCard pkg={pkg} onEdit={openEdit} onDelete={setDeleting} />
+                                    </StaggerItem>
+                                ))}
+                            </StaggerGrid>
+                            <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
+                        </>
+                    )}
                 </>
             )}
 
@@ -108,7 +129,7 @@ const WaterPackages = () => {
                 open={modalOpen}
                 editing={editing}
                 onClose={() => setModalOpen(false)}
-                onSaved={load}
+                onSaved={() => load(true)}
             />
 
             <ConfirmationBox

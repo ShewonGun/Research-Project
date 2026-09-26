@@ -10,11 +10,11 @@ import {
   FiMenu,
   FiAlertTriangle,
 } from "react-icons/fi";
-import ThemeToggle from "../SharedComponents/ThemeToggle.jsx";
-import ConfirmationBox from "../SharedComponents/ConfirmationBox.jsx";
-import Logo from "../SharedComponents/Logo.jsx";
-import { PageFade } from "../SharedComponents/Motion.jsx";
-import { MyWaterProvider, useMyWater } from "../../Context/MyWaterContext.jsx";
+import ThemeToggle from "../Components/SharedComponents/ThemeToggle.jsx";
+import ConfirmationBox from "../Components/SharedComponents/ConfirmationBox.jsx";
+import Logo from "../Components/SharedComponents/Logo.jsx";
+import { PageFade } from "../Components/SharedComponents/Motion.jsx";
+import { MyWaterProvider, useMyWater } from "../Context/MyWaterContext.jsx";
 
 // Nav is mode-aware: prepaid households manage Plans, postpaid ones see Billing.
 const navFor = (mode) => ({

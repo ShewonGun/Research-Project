@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX, FiDownload } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX, FiDownload, FiLoader } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import StatTile from "../../Components/SharedComponents/StatTile.jsx";
+import SearchInput from "../../Components/SharedComponents/SearchInput.jsx";
+import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 
 const PAGE_SIZE = 5;
 
@@ -27,8 +30,12 @@ const Billing = () => {
     const [confirmRun, setConfirmRun] = useState(false);
     const [running, setRunning] = useState(false);
     const [page, setPage] = useState(1);
+    const [search, setSearch] = useState("");
     const [editing, setEditing] = useState(false);
     const [snapshot, setSnapshot] = useState(null);
+    const [payingIds, setPayingIds] = useState(() => new Set());
+
+    useEffect(() => setPage(1), [search]);
 
     const startEdit = () => {
         setSnapshot(tariff);
@@ -102,12 +109,15 @@ const Billing = () => {
     };
 
     const markPaid = async (id) => {
+        setPayingIds((s) => new Set(s).add(id));
         try {
             await apiFetch(`/api/bills/${id}/pay`, { method: "PUT" });
             await load();
             toast.success("Bill marked paid.");
         } catch (e) {
             toast.error(e.message);
+        } finally {
+            setPayingIds((s) => { const n = new Set(s); n.delete(id); return n; });
         }
     };
 
@@ -116,7 +126,9 @@ const Billing = () => {
     const outstanding = bills.filter((b) => b.status === "unpaid" || b.status === "overdue");
     const outstandingTotal = outstanding.reduce((s, b) => s + (b.amount || 0), 0);
     const collected = bills.filter((b) => b.status === "paid").reduce((s, b) => s + (b.amount || 0), 0);
-    const paged = bills.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const q = search.trim().toLowerCase();
+    const shownBills = !q ? bills : bills.filter((b) => [b.device?.name, b.device?.deviceId].some((v) => v?.toLowerCase().includes(q)));
+    const paged = shownBills.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     const exportBills = () => {
         const rows = bills.map((b) => ({
@@ -156,7 +168,7 @@ const Billing = () => {
         const billRows = bills
             .map(
                 (b) =>
-                    `<tr><td>${esc(b.device?.name || "—")} <span class="muted">${esc(b.device?.deviceId || "")}</span></td><td>${b.units ?? "—"}</td><td>${b.status === "open" ? "—" : money(b.amount)}</td><td>${esc(b.status)}</td><td>${b.dueDate ? new Date(b.dueDate).toLocaleDateString() : "—"}</td></tr>`
+                    `<tr><td>${esc(b.device?.name || "—")} <span class="muted">${esc(b.device?.deviceId || "")}</span></td><td>${esc(b.device?.owner?.accountNumber || "—")}</td><td>${b.units ?? "—"}</td><td>${b.status === "open" ? "—" : money(b.amount)}</td><td>${esc(b.status)}</td><td>${b.dueDate ? new Date(b.dueDate).toLocaleDateString() : "—"}</td></tr>`
             )
             .join("");
 
@@ -174,7 +186,7 @@ const Billing = () => {
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eef2f7; }
   th { color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-  .bills td:nth-child(2), .bills th:nth-child(2), .bills td:nth-child(3), .bills th:nth-child(3) { text-align: right; }
+  .bills td:nth-child(3), .bills th:nth-child(3), .bills td:nth-child(4), .bills th:nth-child(4) { text-align: right; }
   .muted { color: #94a3b8; font-family: ui-monospace, monospace; font-size: 11px; }
   .brand { color: #0284c7; font-weight: 700; }
 </style></head><body>
@@ -197,8 +209,8 @@ const Billing = () => {
   }
 
   <h2>Bills</h2>
-  <table class="bills"><thead><tr><th>Connection</th><th>Units</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
-  <tbody>${billRows || '<tr><td class="muted">No bills</td><td></td><td></td><td></td><td></td></tr>'}</tbody></table>
+  <table class="bills"><thead><tr><th>Connection</th><th>Account #</th><th>Units</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+  <tbody>${billRows || '<tr><td class="muted">No bills</td><td></td><td></td><td></td><td></td><td></td></tr>'}</tbody></table>
 </body></html>`);
         w.document.close();
         w.focus();
@@ -250,11 +262,11 @@ const Billing = () => {
             </div>
 
             {/* Summary tiles */}
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Tile label="Outstanding" value={money(outstandingTotal)} icon={FiDollarSign} tone="red" />
-                <Tile label="Collected" value={money(collected)} icon={FiCheckCircle} tone="emerald" />
-                <Tile label="Open bills" value={outstanding.length} icon={FiFileText} tone="sky" />
-            </div>
+            <StaggerGrid className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StaggerItem><StatTile label="Outstanding" value={money(outstandingTotal)} icon={FiDollarSign} tone="red" /></StaggerItem>
+                <StaggerItem><StatTile label="Collected" value={money(collected)} icon={FiCheckCircle} tone="emerald" /></StaggerItem>
+                <StaggerItem><StatTile label="Open bills" value={outstanding.length} icon={FiFileText} tone="sky" /></StaggerItem>
+            </StaggerGrid>
 
             {/* Tariff editor */}
             {tariff && (
@@ -404,10 +416,19 @@ const Billing = () => {
 
             {/* Recent bills */}
             <div className="mt-6">
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Recent bills</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Recent bills</h2>
+                    {bills.length > 0 && (
+                        <SearchInput value={search} onChange={setSearch} placeholder="Search by device or ID…" className="w-full sm:w-64" />
+                    )}
+                </div>
                 {bills.length === 0 ? (
                     <div className="mt-3 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
                         <p className="text-sm text-slate-500 dark:text-slate-400">No bills yet. Run billing to close the first cycles.</p>
+                    </div>
+                ) : shownBills.length === 0 ? (
+                    <div className="mt-3 rounded-lg border border-dashed border-slate-300 py-14 text-center dark:border-slate-700">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No bills match "{search}".</p>
                     </div>
                 ) : (
                     <>
@@ -447,8 +468,10 @@ const Billing = () => {
                                         <button
                                             type="button"
                                             onClick={() => markPaid(b._id)}
-                                            className="text-xs font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
+                                            disabled={payingIds.has(b._id)}
+                                            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 transition hover:text-emerald-500 disabled:opacity-50 dark:text-emerald-400"
                                         >
+                                            {payingIds.has(b._id) && <FiLoader className="h-3 w-3 animate-spin" />}
                                             Mark paid
                                         </button>
                                     </div>
@@ -472,7 +495,7 @@ const Billing = () => {
                             </thead>
                             <tbody>
                                 {paged.map((b) => (
-                                    <tr key={b._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                                    <tr key={b._id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
                                         <td className="px-4 py-3">
                                             <p className="font-medium text-slate-900 dark:text-white">{b.device?.name || "—"}</p>
                                             <p className="font-mono text-xs text-slate-400 dark:text-slate-500">{b.device?.deviceId}</p>
@@ -496,8 +519,10 @@ const Billing = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => markPaid(b._id)}
-                                                    className="text-xs font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
+                                                    disabled={payingIds.has(b._id)}
+                                                    className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 transition hover:text-emerald-500 disabled:opacity-50 dark:text-emerald-400"
                                                 >
+                                                    {payingIds.has(b._id) && <FiLoader className="h-3 w-3 animate-spin" />}
                                                     Mark paid
                                                 </button>
                                             )}
@@ -509,7 +534,7 @@ const Billing = () => {
                     </div>
                     </>
                 )}
-                <Pagination page={page} pageSize={PAGE_SIZE} total={bills.length} onChange={setPage} />
+                <Pagination page={page} pageSize={PAGE_SIZE} total={shownBills.length} onChange={setPage} />
             </div>
 
             <ConfirmationBox
@@ -525,24 +550,6 @@ const Billing = () => {
         </div>
     );
 };
-
-const tones = {
-    red: "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400",
-    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
-    sky: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
-};
-
-const Tile = ({ label, value, icon: Icon, tone }) => (
-    <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-            <span className={`flex h-7 w-7 items-center justify-center rounded-md ${tones[tone]}`}>
-                <Icon className="h-4 w-4" />
-            </span>
-        </div>
-        <p className="mt-2 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{value}</p>
-    </div>
-);
 
 const inputCls =
     "rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white";
