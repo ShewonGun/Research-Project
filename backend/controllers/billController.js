@@ -45,7 +45,11 @@ export const getBills = async (req, res) => {
         if (req.query.status) filter.status = req.query.status;
 
         const bills = await Bill.find(filter)
-            .populate("device", "name deviceId")
+            .populate({
+                path: "device",
+                select: "name deviceId owner",
+                populate: { path: "owner", select: "name accountNumber" },
+            })
             .sort({ createdAt: -1 });
 
         return res.json({ count: bills.length, bills });
