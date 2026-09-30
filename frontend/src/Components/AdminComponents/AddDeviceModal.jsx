@@ -8,15 +8,25 @@ import HouseholdSelect from "./HouseholdSelect.jsx";
 
 const emptyForm = { deviceId: "", name: "", location: "", owner: "" };
 
-const AddDeviceModal = ({ open, onClose, onSaved }) => {
+const AddDeviceModal = ({ open, editing, onClose, onSaved }) => {
     const toast = useToast();
     const [form, setForm] = useState(emptyForm);
     const [saving, setSaving] = useState(false);
 
+    // Sync the form whenever the modal opens (for create) or the target changes (edit).
     useEffect(() => {
         if (!open) return;
-        setForm(emptyForm);
-    }, [open]);
+        setForm(
+            editing
+                ? {
+                      deviceId: editing.deviceId,
+                      name: editing.name || "",
+                      location: editing.location || "",
+                      owner: editing.owner?._id || "",
+                  }
+                : emptyForm
+        );
+    }, [open, editing]);
 
     const panelRef = useModalDismiss(open, onClose);
 
@@ -26,12 +36,19 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
         e.preventDefault();
         setSaving(true);
         try {
-            const body = { ...form };
-            if (!body.owner) delete body.owner; // omit when unassigned
-            await apiFetch("/api/devices", { method: "POST", body });
+            if (editing) {
+                await apiFetch(`/api/devices/${editing._id}`, {
+                    method: "PUT",
+                    body: { name: form.name, location: form.location },
+                });
+            } else {
+                const body = { ...form };
+                if (!body.owner) delete body.owner; // omit when unassigned
+                await apiFetch("/api/devices", { method: "POST", body });
+            }
             onSaved?.();
             onClose?.();
-            toast.success("Connection registered.");
+            toast.success(editing ? "Connection updated." : "Connection registered.");
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -61,7 +78,9 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
                         transition={{ duration: 0.2, ease: "easeOut" }}
                     >
                         <div className="flex items-center justify-between">
-                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Register connection</h2>
+                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                                {editing ? "Edit connection" : "Register connection"}
+                            </h2>
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -74,7 +93,16 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
 
                         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
                             <Field label="Device ID">
-                                <input type="text" required value={form.deviceId} onChange={set("deviceId")} className={inputCls} placeholder="ESP32-A1B2C3" />
+                                <input
+                                    type="text"
+                                    required
+                                    disabled={!!editing}
+                                    value={form.deviceId}
+                                    onChange={set("deviceId")}
+                                    className={`${inputCls} disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-800/50`}
+                                    placeholder="ESP32-A1B2C3"
+                                />
+                                {editing && <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">Device ID can't be changed.</p>}
                             </Field>
                             <Field label="Name">
                                 <input type="text" value={form.name} onChange={set("name")} className={inputCls} placeholder="Kitchen Meter" />
@@ -82,12 +110,14 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
                             <Field label="Location">
                                 <input type="text" value={form.location} onChange={set("location")} className={inputCls} placeholder="Colombo" />
                             </Field>
-                            <HouseholdSelect
-                                open={open}
-                                label="Owner (household)"
-                                value={form.owner}
-                                onChange={(v) => setForm((f) => ({ ...f, owner: v }))}
-                            />
+                            {!editing && (
+                                <HouseholdSelect
+                                    open={open}
+                                    label="Owner (household)"
+                                    value={form.owner}
+                                    onChange={(v) => setForm((f) => ({ ...f, owner: v }))}
+                                />
+                            )}
 
                             <div className="flex justify-end gap-2 pt-1">
                                 <button
@@ -102,7 +132,7 @@ const AddDeviceModal = ({ open, onClose, onSaved }) => {
                                     disabled={saving}
                                     className="rounded-sm bg-sky-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-60"
                                 >
-                                    {saving ? "Saving…" : "Register"}
+                                    {saving ? "Saving…" : editing ? "Save" : "Register"}
                                 </button>
                             </div>
                         </form>

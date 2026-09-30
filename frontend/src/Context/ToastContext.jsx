@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef, useState } from "react";
+import { createContext, useContext, useCallback, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FiCheckCircle, FiAlertTriangle, FiInfo, FiX } from "react-icons/fi";
 
@@ -28,14 +28,19 @@ export const ToastProvider = ({ children }) => {
         [dismiss],
     );
 
-    // Convenience helpers.
-    const toast = {
-        success: (m, d) => push(m, "success", d),
-        error: (m, d) => push(m, "error", d),
-        info: (m, d) => push(m, "info", d),
-        show: push,
-        dismiss,
-    };
+    // Stable across renders — components that put `toast` in a useCallback/
+    // useEffect dependency array won't re-run just because a toast was shown
+    // or dismissed elsewhere in the app.
+    const toast = useMemo(
+        () => ({
+            success: (m, d) => push(m, "success", d),
+            error: (m, d) => push(m, "error", d),
+            info: (m, d) => push(m, "info", d),
+            show: push,
+            dismiss,
+        }),
+        [push, dismiss],
+    );
 
     return (
         <ToastContext.Provider value={toast}>

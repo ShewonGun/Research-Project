@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
@@ -40,10 +41,13 @@ const Alerts = () => {
     const [filter, setFilter] = useState("open");
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const lastLoadAt = useRef(0);
+    const deviceId = device?._id;
 
     useEffect(() => setPage(1), [filter]);
 
     const load = useCallback(async () => {
+        lastLoadAt.current = Date.now();
         try {
             const data = await apiFetch(`/api/alerts?limit=200`);
             setAll(data.alerts || []);
@@ -56,9 +60,33 @@ const Alerts = () => {
 
     useEffect(() => {
         load();
-        const id = setInterval(load, 8000);
-        return () => clearInterval(id);
     }, [load]);
+
+    // Live updates instead of polling — join this device's room and refetch
+    // when the server says something actually changed. If we just loaded
+    // ourselves (e.g. our own acknowledge/resolve), skip the echo.
+    useEffect(() => {
+        if (!deviceId) return;
+        const socket = connectSocket();
+        if (!socket) return;
+
+        socket.emit("device:join", deviceId);
+        const onChange = () => {
+            if (Date.now() - lastLoadAt.current < 1500) return;
+            load();
+        };
+        socket.on("alert:new", onChange);
+        socket.on("alert:updated", onChange);
+
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(onChange, 60000);
+        return () => {
+            socket.emit("device:leave", deviceId);
+            socket.off("alert:new", onChange);
+            socket.off("alert:updated", onChange);
+            clearInterval(id);
+        };
+    }, [deviceId, load]);
 
     if (ctxLoading) return <WaterLoader center />;
     if (!device) return <NoDevice />;

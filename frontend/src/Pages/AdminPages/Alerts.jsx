@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiLoader } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import StatTile from "../../Components/SharedComponents/StatTile.jsx";
@@ -43,10 +44,12 @@ const Alerts = () => {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [pending, setPending] = useState(() => new Set());
+    const lastLoadAt = useRef(0);
 
     useEffect(() => setPage(1), [filter, search]);
 
     const load = useCallback(async (silent = false) => {
+        lastLoadAt.current = Date.now();
         if (!silent) setLoading(true);
         try {
             const data = await apiFetch("/api/alerts?limit=200");
@@ -60,8 +63,22 @@ const Alerts = () => {
 
     useEffect(() => {
         load();
-        const id = setInterval(() => load(true), 8000);
-        return () => clearInterval(id);
+        const socket = connectSocket();
+        // If we just loaded (e.g. our own acknowledge/resolve), an incoming
+        // socket notification for that same change is just an echo — skip it.
+        const onChange = () => {
+            if (Date.now() - lastLoadAt.current < 1500) return;
+            load(true);
+        };
+        socket?.on("alert:new", onChange);
+        socket?.on("alert:updated", onChange);
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(() => load(true), 60000);
+        return () => {
+            socket?.off("alert:new", onChange);
+            socket?.off("alert:updated", onChange);
+            clearInterval(id);
+        };
     }, [load]);
 
     const run = async (fn, successMsg, key) => {

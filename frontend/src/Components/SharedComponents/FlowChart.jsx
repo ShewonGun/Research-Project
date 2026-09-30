@@ -1,19 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { FiActivity } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { useChartTheme } from "./chartTheme.js";
 
-// Live flow-rate area chart: polls the device's recent readings and draws
-// flow rate (L/min) over the last ~1 minute of samples.
+const MAX_SAMPLES = 60;
+
+// Live flow-rate area chart: seeds from recent readings, then a fresh sample
+// is pushed over the socket (`reading:new`) as soon as the device reports it —
+// a periodic re-fetch remains only as a safety net.
 // `bare` omits the outer card wrapper so it can be embedded inside another card.
 const FlowChart = ({ deviceId, bare = false }) => {
     const t = useChartTheme();
     const [data, setData] = useState([]);
+    const nextIndex = useRef(0);
 
     const load = useCallback(async () => {
         try {
-            const res = await apiFetch(`/api/readings?device=${deviceId}&limit=60`);
+            const res = await apiFetch(`/api/readings?device=${deviceId}&limit=${MAX_SAMPLES}`);
             const series = (res.readings || [])
                 .slice()
                 .reverse()
@@ -22,6 +27,7 @@ const FlowChart = ({ deviceId, bare = false }) => {
                     flow: Number(r.flowRate) || 0,
                     time: new Date(r.timestamp).toLocaleTimeString(),
                 }));
+            nextIndex.current = series.length;
             setData(series);
         } catch {
             /* keep last frame on transient errors */
@@ -30,9 +36,30 @@ const FlowChart = ({ deviceId, bare = false }) => {
 
     useEffect(() => {
         load();
-        const id = setInterval(load, 5000);
-        return () => clearInterval(id);
-    }, [load]);
+        const socket = connectSocket();
+        socket?.emit("device:join", deviceId);
+
+        const onReading = (r) => {
+            if (r.device !== deviceId) return;
+            setData((prev) => {
+                const point = {
+                    i: nextIndex.current++,
+                    flow: Number(r.flowRate) || 0,
+                    time: new Date(r.timestamp).toLocaleTimeString(),
+                };
+                return [...prev, point].slice(-MAX_SAMPLES);
+            });
+        };
+        socket?.on("reading:new", onReading);
+
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(load, 30000);
+        return () => {
+            socket?.emit("device:leave", deviceId);
+            socket?.off("reading:new", onReading);
+            clearInterval(id);
+        };
+    }, [deviceId, load]);
 
     const current = data.length ? data[data.length - 1].flow : 0;
     const flowing = current > 0.1;

@@ -1,7 +1,9 @@
 import express from "express";
+import http from "http";
 import cors from "cors";
 import dotenv from "dotenv";
 import connectDB from "./config/dbConfig.js";
+import { initSocket } from "./config/socket.js";
 import userRoutes from "./routes/userRoutes.js";
 import waterPackageRoutes from "./routes/waterPackageRoutes.js";
 import deviceRoutes from "./routes/deviceRoutes.js";
@@ -33,8 +35,11 @@ app.use("/api/tariff", tariffRoutes);
 app.use("/api/bills", billRoutes);
 app.use("/api/alerts", alertRoutes);
 
+const server = http.createServer(app);
+initSocket(server);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

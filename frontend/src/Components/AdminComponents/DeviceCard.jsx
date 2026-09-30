@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiTrash2, FiCpu, FiExternalLink, FiUser, FiCreditCard, FiMapPin, FiClock } from "react-icons/fi";
+import { FiTrash2, FiEdit2, FiCpu, FiExternalLink, FiUser, FiCreditCard, FiMapPin, FiClock } from "react-icons/fi";
 import ConnectionDetailModal from "./ConnectionDetailModal.jsx";
 
 const valveStyles = {
@@ -17,7 +17,7 @@ const relativeTime = (date) => {
     return `${Math.floor(s / 86400)}d ago`;
 };
 
-const DeviceCard = ({ device, onDelete, onUpdated }) => {
+const DeviceCard = ({ device, onEdit, onDelete, onUpdated }) => {
     const [detailOpen, setDetailOpen] = useState(false);
 
     return (
@@ -68,14 +68,24 @@ const DeviceCard = ({ device, onDelete, onUpdated }) => {
                 >
                     View details <FiExternalLink className="h-3.5 w-3.5" />
                 </button>
-                <button
-                    type="button"
-                    onClick={() => onDelete(device)}
-                    aria-label="Delete device"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                >
-                    <FiTrash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => onEdit(device)}
+                        aria-label="Edit device"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiEdit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onDelete(device)}
+                        aria-label="Delete device"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                    >
+                        <FiTrash2 className="h-3.5 w-3.5" />
+                    </button>
+                </div>
             </div>
 
             <ConnectionDetailModal

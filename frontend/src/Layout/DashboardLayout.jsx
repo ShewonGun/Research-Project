@@ -7,6 +7,7 @@ import ConfirmationBox from "../Components/SharedComponents/ConfirmationBox.jsx"
 import Logo from "../Components/SharedComponents/Logo.jsx";
 import { PageFade } from "../Components/SharedComponents/Motion.jsx";
 import { apiFetch } from "../lib/api.js";
+import { connectSocket, disconnectSocket } from "../lib/socket.js";
 
 const relativeTime = (date) => {
     if (!date) return "";
@@ -81,8 +82,16 @@ const DashboardLayout = () => {
 
     useEffect(() => {
         loadAlerts();
-        const id = setInterval(loadAlerts, 8000);
-        return () => clearInterval(id);
+        const socket = connectSocket();
+        socket?.on("alert:new", loadAlerts);
+        socket?.on("alert:updated", loadAlerts);
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(loadAlerts, 60000);
+        return () => {
+            socket?.off("alert:new", loadAlerts);
+            socket?.off("alert:updated", loadAlerts);
+            clearInterval(id);
+        };
     }, [loadAlerts]);
 
     // Close the alerts dropdown on an outside click.
@@ -126,6 +135,7 @@ const DashboardLayout = () => {
     }, [location.pathname]);
 
     const handleLogout = () => {
+        disconnectSocket();
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         navigate("/login", { replace: true });

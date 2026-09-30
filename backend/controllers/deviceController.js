@@ -2,6 +2,7 @@ import Device from "../models/Device.js";
 import Subscription from "../models/Subscription.js";
 import Bill from "../models/Bill.js";
 import Alert from "../models/Alert.js";
+import { emitDeviceChanged, emitDeviceListChanged } from "../config/socket.js";
 
 // A user sees only their own devices; an admin sees all.
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { owner: req.user._id });
@@ -27,6 +28,7 @@ export const createDevice = async (req, res) => {
             billingMode: ["prepaid", "postpaid"].includes(billingMode) ? billingMode : undefined,
         });
 
+        emitDeviceListChanged();
         return res.status(201).json({ device });
     } catch (error) {
         if (error.name === "ValidationError") {
@@ -86,6 +88,7 @@ export const updateDevice = async (req, res) => {
 
         await device.save();
         const updated = await device.populate("owner", "name email");
+        emitDeviceChanged(updated);
         return res.json({ device: updated });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -144,6 +147,7 @@ export const setValve = async (req, res) => {
         }
 
         const updated = await device.save();
+        emitDeviceChanged(updated);
         return res.json({ device: updated });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -202,6 +206,7 @@ export const changeBillingMode = async (req, res) => {
 
         await device.save();
         const updated = await device.populate("owner", "name email");
+        emitDeviceChanged(updated);
         return res.json({ device: updated });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -215,6 +220,7 @@ export const deleteDevice = async (req, res) => {
     try {
         const device = await Device.findOneAndDelete({ _id: req.params.id, ...ownershipFilter(req) });
         if (!device) return res.status(404).json({ message: "Device not found" });
+        emitDeviceListChanged();
         return res.json({ message: "Device deleted" });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });

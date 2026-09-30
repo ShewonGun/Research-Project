@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const ThemeContext = createContext(null);
 
@@ -22,11 +22,12 @@ export const ThemeProvider = ({ children }) => {
 
     const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
-    return (
-        <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
-            {children}
-        </ThemeContext.Provider>
-    );
+    // Stable across renders — same reasoning as ToastContext: nothing that
+    // depends on this in a useCallback/useEffect array should re-run just
+    // because some unrelated render happened.
+    const value = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme]);
+
+    return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };
 
 export const useTheme = () => {

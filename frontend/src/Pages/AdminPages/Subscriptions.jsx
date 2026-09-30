@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FiPlus, FiCreditCard, FiZap, FiDollarSign, FiDownload } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import AssignSubscriptionModal from "../../Components/AdminComponents/AssignSubscriptionModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
@@ -38,10 +39,12 @@ const Subscriptions = () => {
     const [assignOpen, setAssignOpen] = useState(false);
     const [cancelling, setCancelling] = useState(null);
     const [cancelLoading, setCancelLoading] = useState(false);
+    const lastLoadAt = useRef(0);
 
     useEffect(() => setPage(1), [filter, search]);
 
     const load = useCallback(async (silent = false) => {
+        lastLoadAt.current = Date.now();
         if (!silent) setLoading(true);
         try {
             const data = await apiFetch("/api/subscriptions");
@@ -55,8 +58,18 @@ const Subscriptions = () => {
 
     useEffect(() => {
         load();
-        const id = setInterval(() => load(true), 8000);
-        return () => clearInterval(id);
+        const socket = connectSocket();
+        const onChange = () => {
+            if (Date.now() - lastLoadAt.current < 1500) return;
+            load(true);
+        };
+        socket?.on("device:updated", onChange);
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(() => load(true), 60000);
+        return () => {
+            socket?.off("device:updated", onChange);
+            clearInterval(id);
+        };
     }, [load]);
 
     const confirmCancel = async () => {

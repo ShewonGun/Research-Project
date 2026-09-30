@@ -1,5 +1,11 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch } from "../lib/api.js";
+import { connectSocket } from "../lib/socket.js";
+
+// If we just refreshed (e.g. because our own action changed something), an
+// incoming socket event for that same change is almost always just an echo of
+// what we already have — skip it to avoid double-fetching.
+const ECHO_WINDOW_MS = 1500;
 
 const MyWaterContext = createContext(null);
 
@@ -16,8 +22,11 @@ export const MyWaterProvider = ({ children }) => {
     const [alerts, setAlerts] = useState([]); // active/acknowledged leak alerts
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const lastRefreshAt = useRef(0);
+    const deviceId = device?._id;
 
     const refresh = useCallback(async (silent = false) => {
+        lastRefreshAt.current = Date.now();
         if (!silent) setLoading(true);
         try {
             const devData = await apiFetch("/api/devices");
@@ -63,17 +72,48 @@ export const MyWaterProvider = ({ children }) => {
 
     useEffect(() => {
         refresh();
-        const id = setInterval(() => refresh(true), 8000);
+        // Safety-net poll in case a socket event is ever missed/disconnected —
+        // the socket subscription below is what actually keeps this live.
+        const id = setInterval(() => refresh(true), 60000);
         return () => clearInterval(id);
     }, [refresh]);
 
+    // Once we know which device is ours, join its room and refetch the whole
+    // bundle whenever something meaningful changes (valve state, a new/cleared
+    // alert). Raw per-reading updates deliberately don't trigger this — only
+    // FlowChart needs that frequency.
+    useEffect(() => {
+        if (!deviceId) return;
+        const socket = connectSocket();
+        if (!socket) return;
+
+        const onChange = () => {
+            if (Date.now() - lastRefreshAt.current < ECHO_WINDOW_MS) return;
+            refresh(true);
+        };
+
+        socket.emit("device:join", deviceId);
+        socket.on("device:updated", onChange);
+        socket.on("alert:new", onChange);
+        socket.on("alert:updated", onChange);
+
+        return () => {
+            socket.emit("device:leave", deviceId);
+            socket.off("device:updated", onChange);
+            socket.off("alert:new", onChange);
+            socket.off("alert:updated", onChange);
+        };
+    }, [deviceId, refresh]);
+
+    // Both depend on the device *id*, not the object — `device` gets a new
+    // reference on every refresh, and nothing here needs more than the id.
     const setValve = useCallback(
         async (state) => {
-            if (!device) return;
-            const data = await apiFetch(`/api/devices/${device._id}/valve`, { method: "PUT", body: { state } });
+            if (!deviceId) return;
+            const data = await apiFetch(`/api/devices/${deviceId}/valve`, { method: "PUT", body: { state } });
             setDevice((d) => ({ ...d, ...data.device }));
         },
-        [device]
+        [deviceId]
     );
 
     const payBill = useCallback(async (id) => {
@@ -84,10 +124,10 @@ export const MyWaterProvider = ({ children }) => {
     // Switch prepaid ⇄ postpaid. Throws (with the server's guardrail message) if
     // the switch isn't allowed; on success the fresh device is refetched.
     const setMode = useCallback(async (billingMode) => {
-        if (!device) return;
-        await apiFetch(`/api/devices/${device._id}/billing-mode`, { method: "PUT", body: { billingMode } });
+        if (!deviceId) return;
+        await apiFetch(`/api/devices/${deviceId}/billing-mode`, { method: "PUT", body: { billingMode } });
         await refresh();
-    }, [device, refresh]);
+    }, [deviceId, refresh]);
 
     const acknowledgeAlert = useCallback(async (id) => {
         await apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" });

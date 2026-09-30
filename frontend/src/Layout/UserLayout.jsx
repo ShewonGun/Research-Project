@@ -15,6 +15,7 @@ import ConfirmationBox from "../Components/SharedComponents/ConfirmationBox.jsx"
 import Logo from "../Components/SharedComponents/Logo.jsx";
 import { PageFade } from "../Components/SharedComponents/Motion.jsx";
 import { MyWaterProvider, useMyWater } from "../Context/MyWaterContext.jsx";
+import { disconnectSocket } from "../lib/socket.js";
 
 // Nav is mode-aware: prepaid households manage Plans, postpaid ones see Billing.
 const navFor = (mode) => ({
@@ -60,6 +61,7 @@ const Shell = () => {
   }, [location.pathname]);
 
   const handleLogout = () => {
+    disconnectSocket();
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login", { replace: true });

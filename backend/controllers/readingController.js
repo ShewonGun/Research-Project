@@ -4,6 +4,7 @@ import Device from "../models/Device.js";
 import Subscription from "../models/Subscription.js";
 import { getOrOpenBill, applyPostpaidEnforcement } from "../utils/postpaid.js";
 import { runLeakDetection } from "../utils/leakDetection.js";
+import { emitReading, emitDeviceChanged } from "../config/socket.js";
 
 // Throttle flow to this % once the prepaid balance drops below LOW_BALANCE_RATIO.
 const LOW_BALANCE_RATIO = 0.1;
@@ -78,6 +79,13 @@ export const ingestReading = async (req, res) => {
             timestamp: readingAt,
         });
 
+        // Was the device already known-online, and what was its supply state
+        // before this sample? Used below to detect a *meaningful* change worth
+        // pushing to clients, as opposed to every single reading.
+        const wasOnline = device.status === "online";
+        const prevEffective = device.effectiveValveState;
+        const prevThrottle = device.effectiveThrottle;
+
         // Mark the device online and record the heartbeat.
         device.status = "online";
         device.lastSeen = new Date();
@@ -95,8 +103,42 @@ export const ingestReading = async (req, res) => {
         // Pass the reading's timestamp as the anomaly-onset for latency metrics.
         await runLeakDetection(device, flowRate, readingAt);
 
+        // Push the sample to anyone watching this device's live flow chart...
+        emitReading(device, { flowRate, volume: volume ?? 0, timestamp: readingAt });
+        // ...but only notify device/list watchers when something actually
+        // changed (came online, or the effective valve state/throttle moved) —
+        // otherwise every 5s reading would be as noisy as the polling it replaces.
+        if (!wasOnline || device.effectiveValveState !== prevEffective || device.effectiveThrottle !== prevThrottle) {
+            emitDeviceChanged(device);
+        }
+
         // Return the EFFECTIVE valve command (both provider gate + household tap).
         return res.status(201).json({
+            valveState: device.effectiveValveState,
+            throttlePercent: device.effectiveThrottle,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// Current supply state for a device, WITHOUT recording a reading. Devices call
+// this on every (re)connect so they adopt the backend's open/closed decision
+// immediately — before, and independently of, their first telemetry sample.
+// @route   GET /api/readings/state?deviceId=<hardwareId>
+// @access  Public (device) — identified by deviceId, not a user token
+export const getDeviceState = async (req, res) => {
+    try {
+        const { deviceId } = req.query;
+        if (!deviceId) {
+            return res.status(400).json({ message: "deviceId is required" });
+        }
+        const device = await Device.findOne({ deviceId });
+        if (!device) {
+            return res.status(404).json({ message: "Unknown device" });
+        }
+        // Same effective command the reading POST returns (provider gate AND tap).
+        return res.json({
             valveState: device.effectiveValveState,
             throttlePercent: device.effectiveThrottle,
         });

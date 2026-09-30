@@ -1,5 +1,6 @@
 import Reading from "../models/Reading.js";
 import Alert from "../models/Alert.js";
+import { emitAlertChanged } from "../config/socket.js";
 
 // Rule-based leak detector (a clean seam for a future edge-AI model to slot into).
 //
@@ -36,7 +37,7 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
         device.throttlePercent = 0;
         await device.save();
 
-        return Alert.create({
+        const alert = await Alert.create({
             device: device._id,
             user: device.owner,
             type: "burst",
@@ -46,6 +47,8 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
             startedAt: readingAt,
             message: `Burst detected — ${flowRate.toFixed(1)} L/min. Supply was automatically shut off to prevent flooding.`,
         });
+        emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
+        return alert;
     }
 
     // ---- Micro-leak ----
@@ -63,7 +66,7 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
         const allTrickle = recent.every((r) => r.flowRate >= MICRO_MIN && r.flowRate <= MICRO_MAX);
 
         if (allTrickle && span >= MICRO_WINDOW_MS * 0.8) {
-            return Alert.create({
+            const alert = await Alert.create({
                 device: device._id,
                 user: device.owner,
                 type: "micro-leak",
@@ -74,16 +77,21 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
                 )} L/min for over ${Math.round(span / 60000)} min with no idle periods.`,
                 startedAt: new Date(recent[0].timestamp),
             });
+            emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
+            return alert;
         }
         return null;
     }
 
     // ---- Genuine idle → clear any standing micro-leak suspicion ----
     if (flowRate < MICRO_MIN) {
-        await Alert.updateMany(
+        const cleared = await Alert.updateMany(
             { device: device._id, type: "micro-leak", status: "active" },
             { status: "resolved", resolvedAt: new Date(), autoAction: "auto-resolved" }
         );
+        if (cleared.modifiedCount > 0) {
+            emitAlertChanged("resolved", { userId: device.owner, deviceId: device._id });
+        }
     }
 
     return null;

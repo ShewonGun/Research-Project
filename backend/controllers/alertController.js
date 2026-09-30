@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Alert from "../models/Alert.js";
+import { emitAlertChanged } from "../config/socket.js";
 
 // Households see their own device alerts; admins see everything.
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { user: req.user._id });
@@ -32,6 +33,7 @@ const setStatus = async (req, res, status, extra = {}) => {
     alert.status = status;
     Object.assign(alert, extra);
     await alert.save();
+    emitAlertChanged(status, { userId: alert.user, deviceId: alert.device });
     return res.json({ alert });
 };
 

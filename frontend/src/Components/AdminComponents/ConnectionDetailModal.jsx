@@ -18,6 +18,7 @@ import {
     FiActivity,
 } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import FlowChart from "../SharedComponents/FlowChart.jsx";
 import UsageChart from "../SharedComponents/UsageChart.jsx";
@@ -80,25 +81,58 @@ const ConnectionDetailModal = ({ open, device, onClose, onUpdated }) => {
     const [busy, setBusy] = useState(false);
     const [throttlePct, setThrottlePct] = useState(50);
 
+    // Keyed on the device *id*, not the device object — the parent hands this
+    // modal a freshly-recreated `device` object on every list refresh (even
+    // the harmless 60s fallback poll), so depending on the object itself would
+    // re-run this modal's effects — and re-fetch — on every one of those.
+    const deviceId = device?._id;
+
     const load = useCallback(async () => {
-        if (!device) return;
+        if (!deviceId) return;
         const [s, u, a] = await Promise.all([
-            apiFetch(`/api/subscriptions?device=${device._id}`).catch(() => ({ subscriptions: [] })),
-            apiFetch(`/api/readings/usage?device=${device._id}&days=7`).catch(() => ({ daily: [], total: 0 })),
-            apiFetch(`/api/alerts?device=${device._id}&limit=5`).catch(() => ({ alerts: [] })),
+            apiFetch(`/api/subscriptions?device=${deviceId}`).catch(() => ({ subscriptions: [] })),
+            apiFetch(`/api/readings/usage?device=${deviceId}&days=7`).catch(() => ({ daily: [], total: 0 })),
+            apiFetch(`/api/alerts?device=${deviceId}&limit=5`).catch(() => ({ alerts: [] })),
         ]);
         setSub((s.subscriptions || [])[0] || null);
         setUsage(u);
         setAlerts(a.alerts || []);
-    }, [device]);
+    }, [deviceId]);
 
+    // Initialize on open (or when switching to a different device). Reading
+    // throttlePercent here only on open/switch — not continuously — so a live
+    // update elsewhere doesn't yank the slider out from under an admin who's
+    // mid-drag.
     useEffect(() => {
-        if (!open) return;
-        setThrottlePct(device?.throttlePercent < 100 ? device.throttlePercent : 50);
+        if (!open || !deviceId) return;
+        setThrottlePct(device.throttlePercent < 100 ? device.throttlePercent : 50);
         load();
-        const id = setInterval(load, 8000);
-        return () => clearInterval(id);
-    }, [open, device, load]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, deviceId, load]);
+
+    // Live updates: join this device's room and refetch when the server says
+    // something actually changed.
+    useEffect(() => {
+        if (!open || !deviceId) return;
+        const socket = connectSocket();
+        if (!socket) return;
+
+        socket.emit("device:join", deviceId);
+        const onChange = () => load();
+        socket.on("device:updated", onChange);
+        socket.on("alert:new", onChange);
+        socket.on("alert:updated", onChange);
+
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(load, 60000);
+        return () => {
+            socket.emit("device:leave", deviceId);
+            socket.off("device:updated", onChange);
+            socket.off("alert:new", onChange);
+            socket.off("alert:updated", onChange);
+            clearInterval(id);
+        };
+    }, [open, deviceId, load]);
 
     if (!device) return null;
 

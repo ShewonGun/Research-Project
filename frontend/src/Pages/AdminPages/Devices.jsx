@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FiPlus } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import DeviceCard from "../../Components/AdminComponents/DeviceCard.jsx";
@@ -17,14 +18,17 @@ const Devices = () => {
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
+    const [editing, setEditing] = useState(null);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState("");
     const [deleting, setDeleting] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const lastLoadAt = useRef(0);
 
     useEffect(() => setPage(1), [search]);
 
     const load = useCallback(async (silent = false) => {
+        lastLoadAt.current = Date.now();
         if (!silent) setLoading(true);
         try {
             const data = await apiFetch("/api/devices");
@@ -38,14 +42,37 @@ const Devices = () => {
 
     useEffect(() => {
         load();
-        // Silently refresh device status / valve state every 8s.
-        const id = setInterval(() => load(true), 8000);
-        return () => clearInterval(id);
+        const socket = connectSocket();
+        // If we just loaded (e.g. our own create/delete), an incoming socket
+        // notification for that same change is just an echo — skip it.
+        const onChange = () => {
+            if (Date.now() - lastLoadAt.current < 1500) return;
+            load(true);
+        };
+        socket?.on("device:updated", onChange);
+        socket?.on("device:list-changed", onChange);
+        // Safety-net poll in case a socket event is ever missed/disconnected.
+        const id = setInterval(() => load(true), 60000);
+        return () => {
+            socket?.off("device:updated", onChange);
+            socket?.off("device:list-changed", onChange);
+            clearInterval(id);
+        };
     }, [load]);
 
     // Replace a single device in place (after valve changes) without a full reload.
     const patchDevice = (updated) =>
         setDevices((list) => list.map((d) => (d._id === updated._id ? { ...d, ...updated } : d)));
+
+    const openCreate = () => {
+        setEditing(null);
+        setModalOpen(true);
+    };
+
+    const openEdit = (device) => {
+        setEditing(device);
+        setModalOpen(true);
+    };
 
     const confirmDelete = async () => {
         if (!deleting) return;
@@ -84,7 +111,7 @@ const Devices = () => {
                 </div>
                 <button
                     type="button"
-                    onClick={() => setModalOpen(true)}
+                    onClick={openCreate}
                     className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
                     <FiPlus className="h-4 w-4" /> <span className="hidden sm:inline">Register connection</span>
@@ -96,7 +123,7 @@ const Devices = () => {
                     <p className="text-sm text-slate-500 dark:text-slate-400">No connections registered yet.</p>
                     <button
                         type="button"
-                        onClick={() => setModalOpen(true)}
+                        onClick={openCreate}
                         className="mt-2 text-sm font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400"
                     >
                         Register your first connection
@@ -115,7 +142,7 @@ const Devices = () => {
                             <StaggerGrid className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                 {paged.map((device) => (
                                     <StaggerItem key={device._id}>
-                                        <DeviceCard device={device} onDelete={setDeleting} onUpdated={patchDevice} />
+                                        <DeviceCard device={device} onEdit={openEdit} onDelete={setDeleting} onUpdated={patchDevice} />
                                     </StaggerItem>
                                 ))}
                             </StaggerGrid>
@@ -125,7 +152,7 @@ const Devices = () => {
                 </>
             )}
 
-            <AddDeviceModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={load} />
+            <AddDeviceModal open={modalOpen} editing={editing} onClose={() => setModalOpen(false)} onSaved={load} />
 
             <ConfirmationBox
                 open={!!deleting}

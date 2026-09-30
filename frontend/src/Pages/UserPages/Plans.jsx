@@ -23,8 +23,13 @@ const Plans = () => {
     const [extraLoading, setExtraLoading] = useState(true);
 
     // `silent` skips the full-page loader (used after a purchase refresh).
+    // Depends on the device *id*, not the device object — MyWaterContext hands
+    // back a brand-new object on every refresh even when nothing changed, so
+    // depending on the object itself would silently re-run this on every one
+    // of those refreshes (e.g. the 60s fallback poll).
+    const deviceId = device?._id;
     const loadExtra = useCallback(async (silent = false) => {
-        if (!device) {
+        if (!deviceId) {
             setExtraLoading(false);
             return;
         }
@@ -32,14 +37,14 @@ const Plans = () => {
         try {
             const [pkgs, subs] = await Promise.all([
                 apiFetch("/api/water-packages?active=true").catch(() => ({ packages: [] })),
-                apiFetch(`/api/subscriptions?device=${device._id}`).catch(() => ({ subscriptions: [] })),
+                apiFetch(`/api/subscriptions?device=${deviceId}`).catch(() => ({ subscriptions: [] })),
             ]);
             setPackages(pkgs.packages || []);
             setHistory(subs.subscriptions || []);
         } finally {
             if (!silent) setExtraLoading(false);
         }
-    }, [device]);
+    }, [deviceId]);
 
     useEffect(() => {
         loadExtra();
