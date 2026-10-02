@@ -18,7 +18,12 @@
 #define FLOW_PIN 18
 #endif
 // Pulse frequency (Hz) per litre/minute. YF-S201 ≈ 7.5 (=> ~450 pulses/litre).
-static const float K_HZ_PER_LPM = 7.5f;
+// Calibrate per sensor: define FLOW_K_HZ_PER_LPM in include/secrets.h (see
+// secrets.example.h for how to measure it). Unset → the datasheet value below.
+#ifndef FLOW_K_HZ_PER_LPM
+#define FLOW_K_HZ_PER_LPM 7.5f
+#endif
+static const float K_HZ_PER_LPM = FLOW_K_HZ_PER_LPM;
 
 volatile uint32_t pulseCount = 0;
 void IRAM_ATTR onPulse() { pulseCount++; }
