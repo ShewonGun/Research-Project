@@ -35,6 +35,13 @@ static uint32_t lastSampleMs = 0;
 // failed request doesn't drop usage — it's flushed on the next good cycle.
 static double pendingVolume = 0;
 
+// Each batch of undelivered litres is tagged "<bootId>-<seq>". The SAME id is re-sent
+// on every retry and only advances once the server acknowledges (2xx), so if a reply
+// is lost after the server already saved the litres, the server can tell the retry
+// is the same batch and not count it twice.
+static uint32_t bootId = 0;
+static uint32_t batchSeq = 0;
+
 // ── Relay / valve + pump ────────────────────────────────────────────────────
 // Valve on GPIO4 (boot-LOW), pump on GPIO5. GPIO5 is a strapping pin that floats
 // HIGH at boot, but only via a weak (~45k) internal pull-up that can't source
@@ -200,6 +207,7 @@ void setup() {
     noInterrupts();
     pulseCount = 0;
     interrupts();
+    bootId = esp_random(); // hardware RNG (Wi-Fi is up) — makes batch ids unique per boot
     lastSampleMs = millis();
 }
 
@@ -234,8 +242,9 @@ void loop() {
         http.setTimeout(4000);        // ...or on a stalled response
         http.addHeader("Content-Type", "application/json");
 
-        char body[160];
-        snprintf(body, sizeof(body), "{\"deviceId\":\"%s\",\"flowRate\":%.2f,\"volume\":%.4f}", DEVICE_ID, flowRate, pendingVolume);
+        char body[220];
+        snprintf(body, sizeof(body), "{\"deviceId\":\"%s\",\"flowRate\":%.2f,\"volume\":%.4f,\"batchId\":\"%08lx-%lu\"}",
+                 DEVICE_ID, flowRate, pendingVolume, (unsigned long)bootId, (unsigned long)batchSeq);
         int status = http.POST(body);
 
         if (status > 0) {
@@ -244,7 +253,10 @@ void loop() {
 
             // Delivered (2xx) → the server now owns this volume; reset the
             // accumulator. On any error it stays buffered and retries next cycle.
-            if (status >= 200 && status < 300) pendingVolume = 0;
+            if (status >= 200 && status < 300) {
+                pendingVolume = 0;
+                batchSeq++; // acknowledged — the next litres start a new batch
+            }
 
             // Parse the valve command and drive the relay.
             JsonDocument doc;

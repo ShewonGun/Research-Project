@@ -61,24 +61,40 @@ const accruePostpaid = async (device, consumedVolume) => {
 // @access  Public (device) — identified by deviceId, not a user token
 export const ingestReading = async (req, res) => {
     try {
-        const { deviceId, flowRate, volume, timestamp } = req.body;
+        const { deviceId, flowRate, volume, timestamp, batchId } = req.body;
 
         if (!deviceId || flowRate === undefined) {
             return res.status(400).json({ message: "deviceId and flowRate are required" });
         }
 
-        const device = await Device.findOne({ deviceId });
+        const device = await Device.findOne({ deviceId }).select("+lastBatchId +lastBatchVolume");
         if (!device) {
             return res.status(404).json({ message: "Unknown device" });
+        }
+
+        // Litres this request adds. A device keeps re-sending a batch (with any new
+        // litres appended) until it gets a 2xx — if our reply was lost after we had
+        // already saved it, the retry would repeat those litres. With a batchId we
+        // count only the part of the batch we haven't seen. Devices that send no
+        // batchId behave exactly as before.
+        let consumed = volume ?? 0;
+        let batchMarkers = null;
+        if (typeof batchId === "string" && batchId) {
+            const alreadyCounted = device.lastBatchId === batchId ? device.lastBatchVolume || 0 : 0;
+            consumed = Math.max(0, consumed - alreadyCounted);
+            batchMarkers = { lastBatchId: batchId, lastBatchVolume: Math.max(alreadyCounted, volume ?? 0) };
         }
 
         const readingAt = timestamp ? new Date(timestamp) : new Date();
         await Reading.create({
             device: device._id,
             flowRate,
-            volume: volume ?? 0,
+            volume: consumed,
             timestamp: readingAt,
         });
+        // Remember the batch immediately — before any later step that could fail — so
+        // a retry after a lost/failed reply is recognised as the same batch.
+        if (batchMarkers) await Device.updateOne({ _id: device._id }, { $set: batchMarkers });
 
         // Was the device already known-online, and what was its supply state
         // before this sample? Used below to detect a *meaningful* change worth
@@ -95,9 +111,9 @@ export const ingestReading = async (req, res) => {
         // Route consumption by billing mode: prepaid draws down the balance;
         // postpaid accrues to the monthly bill. Both enforce the provider gate.
         if (device.billingMode === "postpaid") {
-            await accruePostpaid(device, volume ?? 0);
+            await accruePostpaid(device, consumed);
         } else {
-            await enforceQuota(device, volume ?? 0);
+            await enforceQuota(device, consumed);
         }
 
         // Analyse the flow stream for leaks/bursts (may auto-shut on a burst).
@@ -105,7 +121,7 @@ export const ingestReading = async (req, res) => {
         await runLeakDetection(device, flowRate, readingAt);
 
         // Push the sample to anyone watching this device's live flow chart...
-        emitReading(device, { flowRate, volume: volume ?? 0, timestamp: readingAt });
+        emitReading(device, { flowRate, volume: consumed, timestamp: readingAt });
         // ...but only notify device/list watchers when something actually
         // changed (came online, or the effective valve state/throttle moved) —
         // otherwise every 5s reading would be as noisy as the polling it replaces.
