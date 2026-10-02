@@ -20,6 +20,7 @@ export const MyWaterProvider = ({ children }) => {
     const [bills, setBills] = useState([]); // postpaid: history
     const [usage, setUsage] = useState(null);
     const [alerts, setAlerts] = useState([]); // active/acknowledged leak alerts
+    const [modeRequests, setModeRequests] = useState([]); // prepaid ⇄ postpaid requests, newest first
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const lastRefreshAt = useRef(0);
@@ -35,7 +36,7 @@ export const MyWaterProvider = ({ children }) => {
 
             if (primary) {
                 const postpaid = primary.billingMode === "postpaid";
-                const [subData, usageData, currentData, billsData, alertsData] = await Promise.all([
+                const [subData, usageData, currentData, billsData, alertsData, requestsData] = await Promise.all([
                     postpaid
                         ? Promise.resolve({ subscriptions: [] })
                         : apiFetch(`/api/subscriptions?device=${primary._id}`).catch(() => ({ subscriptions: [] })),
@@ -47,6 +48,7 @@ export const MyWaterProvider = ({ children }) => {
                         ? apiFetch(`/api/bills?device=${primary._id}`).catch(() => ({ bills: [] }))
                         : Promise.resolve({ bills: [] }),
                     apiFetch(`/api/alerts?device=${primary._id}&status=active,acknowledged`).catch(() => ({ alerts: [] })),
+                    apiFetch(`/api/billing-requests?device=${primary._id}`).catch(() => ({ requests: [] })),
                 ]);
                 setSub((subData.subscriptions || [])[0] || null);
                 setUsage(usageData);
@@ -54,6 +56,7 @@ export const MyWaterProvider = ({ children }) => {
                 setEstimate(currentData.estimate || null);
                 setBills(billsData.bills || []);
                 setAlerts(alertsData.alerts || []);
+                setModeRequests(requestsData.requests || []);
             } else {
                 setSub(null);
                 setUsage(null);
@@ -61,6 +64,7 @@ export const MyWaterProvider = ({ children }) => {
                 setEstimate(null);
                 setBills([]);
                 setAlerts([]);
+                setModeRequests([]);
             }
             setError("");
         } catch (err) {
@@ -96,12 +100,14 @@ export const MyWaterProvider = ({ children }) => {
         socket.on("device:updated", onChange);
         socket.on("alert:new", onChange);
         socket.on("alert:updated", onChange);
+        socket.on("billing-request:changed", onChange);
 
         return () => {
             socket.emit("device:leave", deviceId);
             socket.off("device:updated", onChange);
             socket.off("alert:new", onChange);
             socket.off("alert:updated", onChange);
+            socket.off("billing-request:changed", onChange);
         };
     }, [deviceId, refresh]);
 
@@ -121,22 +127,32 @@ export const MyWaterProvider = ({ children }) => {
         await refresh(true);
     }, [refresh]);
 
-    // Switch prepaid ⇄ postpaid. Throws (with the server's guardrail message) if
-    // the switch isn't allowed; on success the fresh device is refetched.
-    const setMode = useCallback(async (billingMode) => {
+    // Ask to switch prepaid ⇄ postpaid. The switch itself needs admin approval, so
+    // this only files a request. Throws (with the server's guardrail message) if
+    // a request isn't allowed right now.
+    const requestMode = useCallback(async (billingMode, reason) => {
         if (!deviceId) return;
-        await apiFetch(`/api/devices/${deviceId}/billing-mode`, { method: "PUT", body: { billingMode } });
-        await refresh();
+        await apiFetch(`/api/devices/${deviceId}/billing-mode`, { method: "PUT", body: { billingMode, reason } });
+        await refresh(true);
     }, [deviceId, refresh]);
+
+    const cancelModeRequest = useCallback(async (id) => {
+        await apiFetch(`/api/billing-requests/${id}`, { method: "DELETE" });
+        await refresh(true);
+    }, [refresh]);
 
     const acknowledgeAlert = useCallback(async (id) => {
         await apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" });
         await refresh(true);
     }, [refresh]);
 
+    const pendingModeRequest = modeRequests.find((r) => r.status === "pending") || null;
+    // Most recent admin decision — shown so the household sees the outcome.
+    const lastModeDecision = modeRequests.find((r) => r.status === "approved" || r.status === "rejected") || null;
+
     const mode = device?.billingMode === "postpaid" ? "postpaid" : "prepaid";
 
-    const value = { device, mode, sub, bill, estimate, bills, usage, alerts, loading, error, refresh, setValve, payBill, setMode, acknowledgeAlert };
+    const value = { device, mode, sub, bill, estimate, bills, usage, alerts, loading, error, refresh, setValve, payBill, requestMode, cancelModeRequest, pendingModeRequest, lastModeDecision, acknowledgeAlert };
     return <MyWaterContext.Provider value={value}>{children}</MyWaterContext.Provider>;
 };
 

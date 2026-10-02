@@ -12,6 +12,7 @@ import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import tariffRoutes from "./routes/tariffRoutes.js";
 import billRoutes from "./routes/billRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
+import billingRequestRoutes from "./routes/billingRequestRoutes.js";
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/tariff", tariffRoutes);
 app.use("/api/bills", billRoutes);
 app.use("/api/alerts", alertRoutes);
+app.use("/api/billing-requests", billingRequestRoutes);
 
 const server = http.createServer(app);
 initSocket(server);

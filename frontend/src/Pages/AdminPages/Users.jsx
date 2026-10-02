@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { FiUserPlus, FiUsers, FiShield, FiHome, FiDownload } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
+import UserDetailModal from "../../Components/AdminComponents/UserDetailModal.jsx";
 import AddAdminModal from "../../Components/AdminComponents/AddAdminModal.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
@@ -17,18 +18,38 @@ const filters = [
     { key: "all", label: "All" },
     { key: "user", label: "Households" },
     { key: "admin", label: "Admins" },
+    { key: "unassigned", label: "No connection" },
 ];
+
+// Connection status chip — which meter(s) a household has been assigned.
+const ConnectionBadge = ({ user, devices }) => {
+    if (user.role === "admin") return <span className="text-slate-400 dark:text-slate-500">—</span>;
+    if (devices.length === 0) {
+        return (
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
+                Not assigned
+            </span>
+        );
+    }
+    return (
+        <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+            Assigned{devices.length > 1 ? ` (${devices.length})` : ""}
+        </span>
+    );
+};
 
 const Users = () => {
     const toast = useToast();
     const me = JSON.parse(localStorage.getItem("user") || "null");
     const [users, setUsers] = useState([]);
+    const [devicesByOwner, setDevicesByOwner] = useState({}); // ownerId → devices
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("all");
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [addOpen, setAddOpen] = useState(false);
     const [deleting, setDeleting] = useState(null);
+    const [viewing, setViewing] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
     useEffect(() => setPage(1), [filter, search]);
@@ -36,8 +57,18 @@ const Users = () => {
     const load = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
         try {
-            const data = await apiFetch("/api/users");
+            const [data, devData] = await Promise.all([
+                apiFetch("/api/users"),
+                // Admins get every device, with its owner populated.
+                apiFetch("/api/devices").catch(() => ({ devices: [] })),
+            ]);
             setUsers(data.users || []);
+            const map = {};
+            (devData.devices || []).forEach((d) => {
+                const id = d.owner?._id;
+                if (id) (map[id] ||= []).push(d);
+            });
+            setDevicesByOwner(map);
         } catch (err) {
             if (!silent) toast.error(err.message);
         } finally {
@@ -66,8 +97,14 @@ const Users = () => {
 
     const q = search.trim().toLowerCase();
     const shown = users
-        .filter((u) => filter === "all" || u.role === filter)
-        .filter((u) => !q || [u.name, u.email, u.phone].some((v) => v?.toLowerCase().includes(q)));
+        .filter((u) =>
+            filter === "all"
+                ? true
+                : filter === "unassigned"
+                  ? u.role === "user" && !devicesByOwner[u._id]
+                  : u.role === filter
+        )
+        .filter((u) => !q || [u.name, u.email, u.phone, u.nic, u.accountNumber].some((v) => v?.toLowerCase().includes(q)));
     const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const admins = users.filter((u) => u.role === "admin").length;
     const households = users.length - admins;
@@ -80,6 +117,9 @@ const Users = () => {
             email: u.email || "",
             role: u.role === "admin" ? "Admin" : "Household",
             phone: u.phone || "",
+            nic: u.nic || "",
+            account_number: u.accountNumber || "",
+            connections: u.role === "admin" ? "" : (devicesByOwner[u._id] || []).map((d) => d.deviceId).join("; ") || "Not assigned",
             joined: u.createdAt ? new Date(u.createdAt).toISOString().slice(0, 10) : "",
         }));
         if (exportCsv(`users-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} users.`);
@@ -137,7 +177,7 @@ const Users = () => {
                         </button>
                     ))}
                 </div>
-                <SearchInput value={search} onChange={setSearch} placeholder="Search by name, email, or phone…" className="w-full sm:w-64" />
+                <SearchInput value={search} onChange={setSearch} placeholder="Search by name, email, phone, NIC, or account #…" className="w-full sm:w-64" />
             </div>
 
             {/* Table */}
@@ -177,43 +217,39 @@ const Users = () => {
                                 </span>
                             </div>
 
-                            <div className="mt-3 space-y-2 text-sm">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">Contact</span>
-                                    <span className="text-slate-700 dark:text-slate-300">{u.phone || "—"}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">Joined</span>
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {u._id !== me?._id && (
-                                <div className="mt-3 border-t border-slate-100 pt-3 text-right dark:border-slate-800">
+                            <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                                <ConnectionBadge user={u} devices={devicesByOwner[u._id] || []} />
+                                <div className="flex items-center gap-3">
                                     <button
                                         type="button"
-                                        onClick={() => setDeleting(u)}
-                                        className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                        onClick={() => setViewing(u)}
+                                        className="text-xs font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400"
                                     >
-                                        Delete
+                                        View
                                     </button>
+                                    {u._id !== me?._id && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setDeleting(u)}
+                                            className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     ))}
                 </div>
 
                 {/* Table (desktop) */}
                 <div className="mt-4 hidden overflow-x-auto rounded-sm border border-slate-200 md:block dark:border-slate-800">
-                    <table className="w-full min-w-140 text-sm">
+                    <table className="w-full min-w-130 text-sm">
                         <thead>
                             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                                 <th className="px-4 py-2.5 font-medium">User</th>
                                 <th className="px-4 py-2.5 font-medium">Role</th>
-                                <th className="px-4 py-2.5 font-medium">Contact</th>
-                                <th className="px-4 py-2.5 font-medium">Joined</th>
+                                <th className="px-4 py-2.5 font-medium">Connection</th>
                                 <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                             </tr>
                         </thead>
@@ -247,20 +283,28 @@ const Users = () => {
                                             {u.role === "admin" ? "Admin" : "Household"}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{u.phone || "—"}</td>
-                                    <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+                                    <td className="px-4 py-3">
+                                        <ConnectionBadge user={u} devices={devicesByOwner[u._id] || []} />
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        {u._id !== me?._id && (
+                                        <div className="flex items-center justify-end gap-3">
                                             <button
                                                 type="button"
-                                                onClick={() => setDeleting(u)}
-                                                className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                                onClick={() => setViewing(u)}
+                                                className="text-xs font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400"
                                             >
-                                                Delete
+                                                View
                                             </button>
-                                        )}
+                                            {u._id !== me?._id && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDeleting(u)}
+                                                    className="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400"
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -273,6 +317,8 @@ const Users = () => {
             <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
 
             <AddAdminModal open={addOpen} onClose={() => setAddOpen(false)} onSaved={() => load(true)} />
+
+            <UserDetailModal user={viewing} devices={viewing ? devicesByOwner[viewing._id] || [] : []} onClose={() => setViewing(null)} />
 
             <ConfirmationBox
                 open={!!deleting}

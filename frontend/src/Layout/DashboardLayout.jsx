@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiAlertOctagon, FiBell, FiUsers, FiLogOut, FiMenu, FiX, FiTrendingUp, FiChevronDown, FiChevronRight, FiServer, FiDollarSign, FiShield, FiSettings } from "react-icons/fi";
+import { FiGrid, FiPackage, FiCpu, FiCreditCard, FiFileText, FiAlertTriangle, FiAlertOctagon, FiBell, FiUsers, FiLogOut, FiMenu, FiX, FiTrendingUp, FiChevronDown, FiChevronRight, FiServer, FiDollarSign, FiShield, FiSettings, FiRepeat } from "react-icons/fi";
 import ThemeToggle from "../Components/SharedComponents/ThemeToggle.jsx";
 import ConfirmationBox from "../Components/SharedComponents/ConfirmationBox.jsx";
 import Logo from "../Components/SharedComponents/Logo.jsx";
@@ -37,6 +37,7 @@ const navSections = [
         items: [
             { to: "/dashboard/subscriptions", label: "Subscriptions", icon: FiCreditCard },
             { to: "/dashboard/billing", label: "Billing", icon: FiFileText },
+            { to: "/dashboard/mode-requests", label: "Mode Requests", icon: FiRepeat },
         ],
     },
     {
@@ -68,6 +69,7 @@ const DashboardLayout = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [alerts, setAlerts] = useState([]);
     const [alertsOpen, setAlertsOpen] = useState(false);
+    const [pendingRequests, setPendingRequests] = useState(0);
     const bellRef = useRef(null);
 
     // Network-wide active alerts — polled so the bell stays live from any page.
@@ -79,6 +81,27 @@ const DashboardLayout = () => {
             /* background poll — stay quiet on transient errors */
         }
     }, []);
+
+    // Pending prepaid ⇄ postpaid requests — drives the sidebar badge.
+    const loadRequests = useCallback(async () => {
+        try {
+            const data = await apiFetch("/api/billing-requests?status=pending");
+            setPendingRequests(data.count || 0);
+        } catch {
+            /* background poll — stay quiet on transient errors */
+        }
+    }, []);
+
+    useEffect(() => {
+        loadRequests();
+        const socket = connectSocket();
+        socket?.on("billing-request:changed", loadRequests);
+        const id = setInterval(loadRequests, 60000);
+        return () => {
+            socket?.off("billing-request:changed", loadRequests);
+            clearInterval(id);
+        };
+    }, [loadRequests]);
 
     useEffect(() => {
         loadAlerts();
@@ -232,6 +255,11 @@ const DashboardLayout = () => {
                                             <NavLink key={to} to={to} end={end} className={linkClass}>
                                                 <Icon className="h-4 w-4" />
                                                 {label}
+                                                {to === "/dashboard/mode-requests" && pendingRequests > 0 && (
+                                                    <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-400">
+                                                        {pendingRequests}
+                                                    </span>
+                                                )}
                                             </NavLink>
                                         ))}
                                     </div>

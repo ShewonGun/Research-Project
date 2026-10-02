@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { FiDroplet, FiFileText, FiCheck, FiCreditCard, FiUser, FiLock, FiEdit2, FiX } from "react-icons/fi";
+import { FiDroplet, FiFileText, FiCheck, FiCreditCard, FiUser, FiLock, FiEdit2, FiX, FiClock } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 import { apiFetch } from "../../lib/api.js";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import PasswordInput from "../../Components/SharedComponents/PasswordInput.jsx";
+import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
 
 const inputCls =
     "w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-800/50";
@@ -28,16 +29,18 @@ const modes = [
 const initials = (name) => (name?.trim()?.[0] || "U").toUpperCase();
 
 const Account = () => {
-    const { device, mode, loading, setMode } = useMyWater();
+    const { device, mode, loading, requestMode, cancelModeRequest, pendingModeRequest, lastModeDecision } = useMyWater();
     const toast = useToast();
     const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("user") || "null"));
     const [switching, setSwitching] = useState(null);
+    const [confirmTarget, setConfirmTarget] = useState(null);
+    const [withdrawing, setWithdrawing] = useState(false);
 
     // Personal details form
     const [name, setName] = useState(user?.name || "");
     const [phone, setPhone] = useState(user?.phone || "");
     const [address, setAddress] = useState(user?.address || "");
-    const [accountNumber, setAccountNumber] = useState(user?.accountNumber || "");
+    const [nic, setNic] = useState(user?.nic || "");
     const [savingProfile, setSavingProfile] = useState(false);
     const [editingProfile, setEditingProfile] = useState(false);
 
@@ -48,16 +51,31 @@ const Account = () => {
 
     if (loading) return <WaterLoader center />;
 
+    // Households can't switch on their own — this files a request for an admin.
     const change = async (target) => {
         if (target === mode) return;
         setSwitching(target);
         try {
-            await setMode(target);
-            toast.success(`Switched to ${target}.`);
+            await requestMode(target);
+            setConfirmTarget(null);
+            toast.success(`Request sent. An admin will review your switch to ${target}.`);
         } catch (e) {
+            setConfirmTarget(null);
             toast.error(e.message);
         } finally {
             setSwitching(null);
+        }
+    };
+
+    const withdraw = async () => {
+        setWithdrawing(true);
+        try {
+            await cancelModeRequest(pendingModeRequest._id);
+            toast.success("Request withdrawn.");
+        } catch (e) {
+            toast.error(e.message);
+        } finally {
+            setWithdrawing(false);
         }
     };
 
@@ -65,7 +83,7 @@ const Account = () => {
         name.trim() !== (user?.name || "") ||
         (phone || "") !== (user?.phone || "") ||
         (address || "") !== (user?.address || "") ||
-        (accountNumber || "") !== (user?.accountNumber || "");
+        (nic || "") !== (user?.nic || "");
 
     const saveProfile = async (e) => {
         e.preventDefault();
@@ -77,7 +95,7 @@ const Account = () => {
         try {
             const data = await apiFetch("/api/users/profile", {
                 method: "PUT",
-                body: { name: name.trim(), phone, address, accountNumber },
+                body: { name: name.trim(), phone, address, nic },
             });
             setUser(data.user);
             localStorage.setItem("user", JSON.stringify(data.user));
@@ -94,7 +112,7 @@ const Account = () => {
         setName(user?.name || "");
         setPhone(user?.phone || "");
         setAddress(user?.address || "");
-        setAccountNumber(user?.accountNumber || "");
+        setNic(user?.nic || "");
         setEditingProfile(false);
     };
 
@@ -202,7 +220,18 @@ const Account = () => {
                     </label>
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Account number</span>
-                        <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
+                        <input value={user?.accountNumber || ""} disabled placeholder="—" className={inputCls} />
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500">Assigned by AquaFlow. It can't be changed.</span>
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">NIC</span>
+                        <input
+                            value={nic}
+                            onChange={(e) => setNic(e.target.value)}
+                            disabled={!editingProfile}
+                            placeholder="—"
+                            className={inputCls}
+                        />
                     </label>
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Service address</span>
@@ -268,7 +297,7 @@ const Account = () => {
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">Billing mode</p>
                 </div>
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    Choose how you pay for water. You can switch when you have no active plan or unpaid bill.
+                    Choose how you pay for water. Switching needs admin approval, and is only possible when you have no active plan or unpaid bill.
                 </p>
 
                 {!device ? (
@@ -277,6 +306,35 @@ const Account = () => {
                     </div>
                 ) : (
                     <>
+                        {pendingModeRequest && (
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                <span className="flex items-center gap-2">
+                                    <FiClock className="h-4 w-4 shrink-0" />
+                                    Your request to switch to <b className="capitalize">{pendingModeRequest.toMode}</b> is awaiting admin approval.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={withdraw}
+                                    disabled={withdrawing}
+                                    className="text-xs font-medium underline disabled:opacity-50"
+                                >
+                                    {withdrawing ? "Withdrawing…" : "Withdraw"}
+                                </button>
+                            </div>
+                        )}
+                        {!pendingModeRequest && lastModeDecision && (
+                            <div
+                                className={`mt-4 rounded-sm border p-3 text-sm ${
+                                    lastModeDecision.status === "approved"
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                        : "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+                                }`}
+                            >
+                                Your request to switch to <b className="capitalize">{lastModeDecision.toMode}</b> was{" "}
+                                {lastModeDecision.status}.
+                                {lastModeDecision.adminNote && <span> Note: {lastModeDecision.adminNote}</span>}
+                            </div>
+                        )}
                         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {modes.map(({ key, icon: Icon, title, blurb }) => {
                                 const selected = mode === key;
@@ -284,8 +342,8 @@ const Account = () => {
                                     <button
                                         key={key}
                                         type="button"
-                                        disabled={selected || switching !== null}
-                                        onClick={() => change(key)}
+                                        disabled={selected || switching !== null || !!pendingModeRequest}
+                                        onClick={() => setConfirmTarget(key)}
                                         className={`flex flex-col rounded-sm border p-4 text-left transition disabled:cursor-default ${
                                             selected
                                                 ? "border-sky-500 bg-sky-50/50 dark:border-sky-500 dark:bg-sky-950/30"
@@ -308,7 +366,7 @@ const Account = () => {
                                                 </span>
                                             ) : (
                                                 <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">
-                                                    {switching === key ? "Switching…" : "Switch"}
+                                                    {switching === key ? "Sending…" : "Request switch"}
                                                 </span>
                                             )}
                                         </div>
@@ -320,13 +378,24 @@ const Account = () => {
                         </div>
 
                         <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-                            Switching to prepaid closes your water until you buy a plan. Switching to postpaid opens supply and starts a new billing cycle.
+                            Once approved, switching to prepaid closes your water until you buy a plan, and switching to postpaid opens supply and starts a new billing cycle.
                         </p>
                     </>
                 )}
             </div>
             </div>
             </div>
+
+            <ConfirmationBox
+                open={!!confirmTarget}
+                title="Request billing mode change"
+                message={`Send a request to switch to ${confirmTarget}? An admin has to approve it before anything changes.`}
+                confirmText="Send request"
+                tone="primary"
+                loading={switching !== null}
+                onConfirm={() => change(confirmTarget)}
+                onCancel={() => setConfirmTarget(null)}
+            />
         </div>
     );
 };

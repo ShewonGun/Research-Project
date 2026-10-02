@@ -75,6 +75,16 @@ export const emitReading = (device, { flowRate, volume, timestamp }) => {
     });
 };
 
+// A billing-mode request was filed or decided — admins refetch their queue, and
+// the requesting household sees the outcome.
+export const emitBillingRequestChanged = (request) => {
+    const userId = request.user?._id || request.user;
+    getIO()?.to("admin").to(`user:${userId}`).emit("billing-request:changed", {
+        requestId: String(request._id),
+        status: request.status,
+    });
+};
+
 // A leak/burst alert was raised, acknowledged, resolved, or auto-cleared.
 export const emitAlertChanged = (status, { userId, deviceId } = {}) => {
     const io_ = getIO();

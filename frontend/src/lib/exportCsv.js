@@ -29,3 +29,8 @@ export const exportCsv = (filename, rows) => {
 
 // Today's date as YYYY-MM-DD, handy for filenames.
 export const dateStamp = () => new Date().toISOString().slice(0, 10);
+
+// Wrap a plain date string (e.g. "2026-09-30") so spreadsheet apps keep it as
+// literal text instead of auto-detecting it as a date and reformatting it per
+// the system locale (or collapsing it to a serial number).
+export const csvDateText = (isoDate) => `="${isoDate}"`;

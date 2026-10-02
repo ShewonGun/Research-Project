@@ -1,7 +1,10 @@
-import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet, FiDownload } from "react-icons/fi";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet, FiDownload, FiLoader } from "react-icons/fi";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
-import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
+import { apiFetch } from "../../lib/api.js";
+import { exportCsv, dateStamp, csvDateText } from "../../lib/exportCsv.js";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
@@ -9,9 +12,12 @@ import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
 import CumulativeChart from "../../Components/SharedComponents/CumulativeChart.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 
+const EXPORT_DAYS = 30;
+
 const Usage = () => {
     const { device, sub, usage, loading } = useMyWater();
     const toast = useToast();
+    const [exporting, setExporting] = useState(false);
 
     if (loading) return <WaterLoader center />;
     if (!device) return <NoDevice />;
@@ -27,10 +33,29 @@ const Usage = () => {
     const daysLeft = active && avgDaily > 0 ? sub.volumeRemaining / avgDaily : null;
     const runOut = daysLeft != null ? new Date(Date.now() + daysLeft * 86400000) : null;
 
-    const exportUsage = () => {
-        const rows = daily.map((d) => ({ date: d.date, litres: Number(d.volume || 0).toFixed(2) }));
-        if (exportCsv(`usage-${dateStamp()}.csv`, rows)) toast.success(`Exported ${rows.length} days of usage.`);
-        else toast.info("No usage to export yet.");
+    // Pulls a fresh 30-day window (independent of the 7-day summary this page
+    // otherwise shows) and zero-fills every day, so the export always covers
+    // the full last-30-days range rather than only the days with a reading.
+    const exportUsage = async () => {
+        setExporting(true);
+        try {
+            const res = await apiFetch(`/api/readings/usage?device=${device._id}&days=${EXPORT_DAYS}`);
+            const usage30 = res.daily || [];
+            const rows = [];
+            for (let i = EXPORT_DAYS - 1; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = d.toISOString().slice(0, 10);
+                const volume = usage30.find((x) => x.date === key)?.volume || 0;
+                rows.push({ date: csvDateText(key), litres: volume.toFixed(2) });
+            }
+            exportCsv(`usage-30-days-${dateStamp()}.csv`, rows);
+            toast.success(`Exported ${rows.length} days of usage.`);
+        } catch (e) {
+            toast.error(e.message);
+        } finally {
+            setExporting(false);
+        }
     };
 
     return (
@@ -41,14 +66,23 @@ const Usage = () => {
                     <h1 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">Usage</h1>
                     <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Your water consumption and forecast.</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={exportUsage}
-                    disabled={daily.length === 0}
-                    className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                >
-                    <FiDownload className="h-4 w-4" /> <span className="hidden sm:inline">Export CSV</span>
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                    <Link
+                        to="/app/usage/history"
+                        className="flex items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <FiCalendar className="h-4 w-4" /> <span className="hidden sm:inline">Last 30 days</span>
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={exportUsage}
+                        disabled={exporting}
+                        className="flex shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        {exporting ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiDownload className="h-4 w-4" />}{" "}
+                        <span className="hidden sm:inline">Export CSV</span>
+                    </button>
+                </div>
             </div>
 
             {/* Stat tiles */}

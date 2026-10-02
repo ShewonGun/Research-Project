@@ -189,6 +189,12 @@ void setup() {
     // Adopt the server's current valve state before we start reporting, so the
     // board never boots into the wrong open/closed state.
     syncValveFromServer();
+
+    // Pulses counted while booting (Wi-Fi scan/connect is electrically noisy) are
+    // not water — start the first sample from zero.
+    noInterrupts();
+    pulseCount = 0;
+    interrupts();
     lastSampleMs = millis();
 }
 

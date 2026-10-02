@@ -18,7 +18,6 @@ const Profile = () => {
     const [name, setName] = useState(stored?.name || "");
     const [phone, setPhone] = useState(stored?.phone || "");
     const [address, setAddress] = useState(stored?.address || "");
-    const [accountNumber, setAccountNumber] = useState(stored?.accountNumber || "");
     const [savingProfile, setSavingProfile] = useState(false);
     const [editingProfile, setEditingProfile] = useState(false);
 
@@ -30,8 +29,7 @@ const Profile = () => {
     const profileDirty =
         name.trim() !== (user?.name || "") ||
         (phone || "") !== (user?.phone || "") ||
-        (address || "") !== (user?.address || "") ||
-        (accountNumber || "") !== (user?.accountNumber || "");
+        (address || "") !== (user?.address || "");
 
     const saveProfile = async (e) => {
         e.preventDefault();
@@ -43,7 +41,7 @@ const Profile = () => {
         try {
             const data = await apiFetch("/api/users/profile", {
                 method: "PUT",
-                body: { name: name.trim(), phone, address, accountNumber },
+                body: { name: name.trim(), phone, address },
             });
             setUser(data.user);
             localStorage.setItem("user", JSON.stringify(data.user));
@@ -60,7 +58,6 @@ const Profile = () => {
         setName(user?.name || "");
         setPhone(user?.phone || "");
         setAddress(user?.address || "");
-        setAccountNumber(user?.accountNumber || "");
         setEditingProfile(false);
     };
 
@@ -112,10 +109,6 @@ const Profile = () => {
                         <dt className="text-xs text-slate-400 dark:text-slate-500">Phone</dt>
                         <dd className="truncate font-medium text-slate-900 dark:text-white">{user?.phone || "—"}</dd>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                        <dt className="text-xs text-slate-400 dark:text-slate-500">Account #</dt>
-                        <dd className="truncate font-medium text-slate-900 dark:text-white">{user?.accountNumber || "—"}</dd>
-                    </div>
                     {user?.createdAt && (
                         <div className="flex items-center justify-between gap-2">
                             <dt className="text-xs text-slate-400 dark:text-slate-500">Member since</dt>
@@ -165,10 +158,6 @@ const Profile = () => {
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Phone</span>
                         <input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
-                    </label>
-                    <label className="flex flex-col gap-1.5">
-                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Account number</span>
-                        <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} disabled={!editingProfile} placeholder="—" className={inputCls} />
                     </label>
                     <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Address</span>

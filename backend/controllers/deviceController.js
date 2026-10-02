@@ -1,8 +1,9 @@
 import Device from "../models/Device.js";
-import Subscription from "../models/Subscription.js";
-import Bill from "../models/Bill.js";
 import Alert from "../models/Alert.js";
-import { emitDeviceChanged, emitDeviceListChanged } from "../config/socket.js";
+import BillingModeRequest from "../models/BillingModeRequest.js";
+import { billingModeBlocker, applyBillingMode } from "../utils/billingMode.js";
+import { createModeRequest } from "./billingRequestController.js";
+import { emitDeviceChanged, emitDeviceListChanged, emitBillingRequestChanged } from "../config/socket.js";
 
 // A user sees only their own devices; an admin sees all.
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { owner: req.user._id });
@@ -154,57 +155,34 @@ export const setValve = async (req, res) => {
     }
 };
 
-// Switch a connection between prepaid and postpaid (household self-service, or
-// admin). Guardrails keep billing consistent across the transition:
-//   → postpaid : blocked while a prepaid plan is still active.
-//   → prepaid  : blocked while any bill is unpaid/overdue; the un-invoiced open
-//                cycle is discarded, and the gate is closed until a plan is bought.
+// Switch a connection between prepaid and postpaid.
+//   admin → applied immediately.
+//   user  → can't switch alone: this files a request that an admin must approve
+//           (see billingRequestController). The guardrails in utils/billingMode.js
+//           apply both when the request is made and when it is approved.
 // @route   PUT /api/devices/:id/billing-mode
-// @access  Private (owner or admin)
+// @access  Private (owner files a request; admin applies directly)
 export const changeBillingMode = async (req, res) => {
     try {
-        const { billingMode } = req.body;
+        const { billingMode, reason } = req.body;
         if (!["prepaid", "postpaid"].includes(billingMode)) {
             return res.status(400).json({ message: "billingMode must be prepaid or postpaid" });
         }
 
         const device = await Device.findOne({ _id: req.params.id, ...ownershipFilter(req) });
         if (!device) return res.status(404).json({ message: "Device not found" });
-        if (device.billingMode === billingMode) {
-            const same = await device.populate("owner", "name email");
-            return res.json({ device: same });
+
+        if (req.user.role !== "admin") {
+            const { error, request } = await createModeRequest(device, req.user, billingMode, reason);
+            if (error) return res.status(error.status).json({ message: error.message });
+            return res.status(202).json({ request });
         }
 
-        if (billingMode === "postpaid") {
-            const activeSub = await Subscription.findOne({ device: device._id, status: "active" });
-            if (activeSub) {
-                return res.status(409).json({
-                    message: "You have an active prepaid plan. Use it up or cancel it before switching to postpaid.",
-                });
-            }
-            device.billingMode = "postpaid";
-            // Postpaid flows freely — restore the provider gate.
-            device.adminValveState = "open";
-            device.throttlePercent = 100;
-        } else {
-            const outstanding = await Bill.countDocuments({
-                device: device._id,
-                status: { $in: ["unpaid", "overdue"] },
-            });
-            if (outstanding > 0) {
-                return res.status(409).json({
-                    message: "Settle your outstanding bills before switching to prepaid.",
-                });
-            }
-            // Drop the current (un-invoiced) postpaid cycle.
-            await Bill.deleteMany({ device: device._id, status: "open" });
-            device.billingMode = "prepaid";
-            // No prepaid plan yet → no supply until one is purchased.
-            device.adminValveState = "closed";
-            device.throttlePercent = 0;
+        if (device.billingMode !== billingMode) {
+            const blocker = await billingModeBlocker(device, billingMode);
+            if (blocker) return res.status(409).json({ message: blocker });
+            await applyBillingMode(device, billingMode);
         }
-
-        await device.save();
         const updated = await device.populate("owner", "name email");
         emitDeviceChanged(updated);
         return res.json({ device: updated });
@@ -220,6 +198,12 @@ export const deleteDevice = async (req, res) => {
     try {
         const device = await Device.findOneAndDelete({ _id: req.params.id, ...ownershipFilter(req) });
         if (!device) return res.status(404).json({ message: "Device not found" });
+        // A deleted connection can't switch mode — drop its pending requests from the admin queue.
+        const pending = await BillingModeRequest.find({ device: device._id, status: "pending" });
+        if (pending.length) {
+            await BillingModeRequest.updateMany({ _id: { $in: pending.map((r) => r._id) } }, { status: "cancelled" });
+            pending.forEach((r) => emitBillingRequestChanged(r));
+        }
         emitDeviceListChanged();
         return res.json({ message: "Device deleted" });
     } catch (error) {

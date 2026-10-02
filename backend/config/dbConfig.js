@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import "../models/User.js";
+import { backfillAccountNumbers, reissueAccountNumbersOnce } from "../utils/accountNumber.js";
 
 const connectDB = async () => {
     const uri = process.env.MONGODB_URI;
@@ -11,6 +13,9 @@ const connectDB = async () => {
     try {
         const conn = await mongoose.connect(uri);
         console.log(`MongoDB connected: ${conn.connection.host}/${conn.connection.name}`);
+        await reissueAccountNumbersOnce()
+            .then(backfillAccountNumbers)
+            .catch((e) => console.error(`Account number backfill failed: ${e.message}`));
     } catch (error) {
         // Don't crash the process (that would leave nodemon stuck "waiting for
         // file changes" and running stale code). Log and retry in the background.

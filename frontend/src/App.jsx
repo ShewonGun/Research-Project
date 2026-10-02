@@ -11,6 +11,7 @@ const WaterPackages = lazy(() => import('./Pages/AdminPages/WaterPackages.jsx'))
 const Devices = lazy(() => import('./Pages/AdminPages/Devices.jsx'))
 const Subscriptions = lazy(() => import('./Pages/AdminPages/Subscriptions.jsx'))
 const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
+const ModeRequests = lazy(() => import('./Pages/AdminPages/ModeRequests.jsx'))
 const AdminAlerts = lazy(() => import('./Pages/AdminPages/Alerts.jsx'))
 const LeakAnalytics = lazy(() => import('./Pages/AdminPages/LeakAnalytics.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
@@ -19,6 +20,7 @@ const AdminProfile = lazy(() => import('./Pages/AdminPages/Profile.jsx'))
 const UserLayout = lazy(() => import('./Layout/UserLayout.jsx'))
 const Home = lazy(() => import('./Pages/UserPages/Home.jsx'))
 const Usage = lazy(() => import('./Pages/UserPages/Usage.jsx'))
+const UsageHistory = lazy(() => import('./Pages/UserPages/UsageHistory.jsx'))
 const Plans = lazy(() => import('./Pages/UserPages/Plans.jsx'))
 const Billing = lazy(() => import('./Pages/UserPages/Billing.jsx'))
 const Account = lazy(() => import('./Pages/UserPages/Account.jsx'))
@@ -58,6 +60,7 @@ const App = () => {
             <Route path="devices" element={<Devices />} />
             <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="billing" element={<AdminBilling />} />
+            <Route path="mode-requests" element={<ModeRequests />} />
             <Route path="alerts" element={<AdminAlerts />} />
             <Route path="analytics" element={<LeakAnalytics />} />
             <Route path="users" element={<Users />} />
@@ -75,6 +78,7 @@ const App = () => {
           >
             <Route index element={<Home />} />
             <Route path="usage" element={<Usage />} />
+            <Route path="usage/history" element={<UsageHistory />} />
             <Route path="plans" element={<Plans />} />
             <Route path="billing" element={<Billing />} />
             <Route path="account" element={<Account />} />
