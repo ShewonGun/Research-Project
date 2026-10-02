@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { FiTrendingUp } from "react-icons/fi";
 import { useChartTheme } from "./chartTheme.js";
@@ -12,7 +13,7 @@ const CumulativeChart = ({ daily }) => {
     for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = dayKey(d);
         running += daily?.find((x) => x.date === key)?.volume || 0;
         days.push({
             key,

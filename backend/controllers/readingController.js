@@ -5,6 +5,7 @@ import Subscription from "../models/Subscription.js";
 import { getOrOpenBill, applyPostpaidEnforcement } from "../utils/postpaid.js";
 import { runLeakDetection } from "../utils/leakDetection.js";
 import { emitReading, emitDeviceChanged } from "../config/socket.js";
+import { resolveTimeZone, dayWindow } from "../utils/dayWindow.js";
 
 // Throttle flow to this % once the prepaid balance drops below LOW_BALANCE_RATIO.
 const LOW_BALANCE_RATIO = 0.1;
@@ -147,6 +148,22 @@ export const getDeviceState = async (req, res) => {
     }
 };
 
+// Litres per calendar day over the last `days` days (today included), grouped by
+// local day in `tz` so "today" means the caller's today. `match` narrows the rows.
+const dailyUsage = async (match, days, tz) => {
+    const timeZone = resolveTimeZone(tz);
+    const { startKey, since } = dayWindow(timeZone, days);
+    const daily = await Reading.aggregate([
+        { $match: { ...match, timestamp: { $gte: since } } },
+        { $addFields: { day: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp", timezone: timeZone } } } },
+        { $match: { day: { $gte: startKey } } },
+        { $group: { _id: "$day", volume: { $sum: "$volume" } } },
+        { $sort: { _id: 1 } },
+        { $project: { _id: 0, date: "$_id", volume: 1 } },
+    ]);
+    return { timeZone, daily, total: daily.reduce((sum, d) => sum + d.volume, 0) };
+};
+
 // Confirm the requesting user owns the device (admins bypass).
 const canAccessDevice = async (req, deviceId) => {
     if (!mongoose.isValidObjectId(deviceId)) return null;
@@ -179,22 +196,8 @@ export const getReadings = async (req, res) => {
 export const getNetworkUsage = async (req, res) => {
     try {
         const windowDays = Math.min(Number(req.query.days) || 7, 90);
-        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-
-        const daily = await Reading.aggregate([
-            { $match: { timestamp: { $gte: since } } },
-            {
-                $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
-                    volume: { $sum: "$volume" },
-                },
-            },
-            { $sort: { _id: 1 } },
-            { $project: { _id: 0, date: "$_id", volume: 1 } },
-        ]);
-
-        const total = daily.reduce((sum, d) => sum + d.volume, 0);
-        return res.json({ days: windowDays, total, daily });
+        const { timeZone, daily, total } = await dailyUsage({}, windowDays, req.query.tz);
+        return res.json({ days: windowDays, timeZone, total, daily });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
     }
@@ -210,22 +213,8 @@ export const getUsage = async (req, res) => {
         if (!device) return res.status(404).json({ message: "Device not found" });
 
         const windowDays = Math.min(Number(days) || 7, 90);
-        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-
-        const daily = await Reading.aggregate([
-            { $match: { device: device._id, timestamp: { $gte: since } } },
-            {
-                $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
-                    volume: { $sum: "$volume" },
-                },
-            },
-            { $sort: { _id: 1 } },
-            { $project: { _id: 0, date: "$_id", volume: 1 } },
-        ]);
-
-        const total = daily.reduce((sum, d) => sum + d.volume, 0);
-        return res.json({ device: device._id, days: windowDays, total, daily });
+        const { timeZone, daily, total } = await dailyUsage({ device: device._id }, windowDays, req.query.tz);
+        return res.json({ device: device._id, days: windowDays, timeZone, total, daily });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
     }

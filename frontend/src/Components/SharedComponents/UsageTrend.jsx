@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { FiBarChart2 } from "react-icons/fi";
@@ -32,7 +33,7 @@ const UsageTrend = ({ deviceId }) => {
     for (let i = DAYS - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = dayKey(d);
         bars.push({
             key,
             label: d.toLocaleDateString(undefined, { day: "numeric", month: "short" }),

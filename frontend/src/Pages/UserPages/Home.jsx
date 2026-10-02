@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FiDroplet, FiArrowRight, FiAlertTriangle, FiFileText, FiLoader } from "react-icons/fi";
@@ -62,7 +63,7 @@ const Home = () => {
     const low = active && ratio < 0.1;
     const overdue = postpaid && (bills || []).some((b) => b.status === "overdue");
     const activeAlerts = (alerts || []).filter((a) => a.status === "active");
-    const today = usage?.daily?.find((d) => d.date === new Date().toISOString().slice(0, 10))?.volume || 0;
+    const today = usage?.daily?.find((d) => d.date === dayKey())?.volume || 0;
     const week = usage?.total || 0;
 
     return (

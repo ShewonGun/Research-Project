@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useChartTheme } from "./chartTheme.js";
 
@@ -10,7 +11,7 @@ const UsageChart = ({ daily, total }) => {
     for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = dayKey(d);
         days.push({
             key,
             label: d.toLocaleDateString(undefined, { weekday: "short" }),

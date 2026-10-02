@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { FiArrowLeft, FiCalendar, FiBarChart2, FiActivity, FiDroplet, FiDownload, FiTrendingUp } from "react-icons/fi";
@@ -49,7 +50,7 @@ const UsageHistory = () => {
     for (let i = DAYS - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = dayKey(d);
         days.push({
             key,
             label: d.toLocaleDateString(undefined, { day: "numeric", month: "short" }),

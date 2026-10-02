@@ -1,3 +1,4 @@
+import { dayKey } from "../../lib/dayKey.js";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FiTrendingUp, FiCalendar, FiBarChart2, FiActivity, FiDroplet, FiDownload, FiLoader } from "react-icons/fi";
@@ -24,7 +25,7 @@ const Usage = () => {
 
     const daily = usage?.daily || [];
     const week = usage?.total || 0;
-    const today = daily.find((d) => d.date === new Date().toISOString().slice(0, 10))?.volume || 0;
+    const today = daily.find((d) => d.date === dayKey())?.volume || 0;
     const daysWithData = daily.length;
     const avgDaily = daysWithData ? week / daysWithData : 0;
     const peak = daily.reduce((m, d) => Math.max(m, d.volume), 0);
@@ -45,7 +46,7 @@ const Usage = () => {
             for (let i = EXPORT_DAYS - 1; i >= 0; i--) {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
-                const key = d.toISOString().slice(0, 10);
+                const key = dayKey(d);
                 const volume = usage30.find((x) => x.date === key)?.volume || 0;
                 rows.push({ date: csvDateText(key), litres: volume.toFixed(2) });
             }
