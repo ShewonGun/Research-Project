@@ -59,12 +59,6 @@ const deviceSchema = new mongoose.Schema(
         lastSeen: {
             type: Date,
         },
-        // Duplicate-delivery guard (see readingController). A device tags each batch
-        // of litres it is trying to deliver with a batchId and re-sends the SAME id
-        // until the server acknowledges; these remember how much of the current batch
-        // was already counted so a retry can't be counted twice. Internal only.
-        lastBatchId: { type: String, select: false },
-        lastBatchVolume: { type: Number, select: false },
     },
     { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

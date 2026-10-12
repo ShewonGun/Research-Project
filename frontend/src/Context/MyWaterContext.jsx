@@ -25,6 +25,8 @@ export const MyWaterProvider = ({ children }) => {
     const [error, setError] = useState("");
     const lastRefreshAt = useRef(0);
     const deviceId = device?._id;
+    const billIdRef = useRef(null); // open cycle's id, read by the live bill listener
+    billIdRef.current = bill?._id ? String(bill._id) : null;
 
     const refresh = useCallback(async (silent = false) => {
         lastRefreshAt.current = Date.now();
@@ -96,7 +98,21 @@ export const MyWaterProvider = ({ children }) => {
             refresh(true);
         };
 
+        // Postpaid: every reading pushes the open cycle's running litres + live
+        // charge — patch it in place. A different bill id means the cycle was
+        // just closed and a new one opened, so refetch to pick up the new bill.
+        const onBill = (data) => {
+            if (data.deviceId !== String(deviceId)) return;
+            if (billIdRef.current && billIdRef.current !== data.bill._id) {
+                refresh(true);
+                return;
+            }
+            setBill((prev) => ({ ...prev, ...data.bill }));
+            setEstimate(data.estimate);
+        };
+
         socket.emit("device:join", deviceId);
+        socket.on("bill:updated", onBill);
         socket.on("device:updated", onChange);
         socket.on("alert:new", onChange);
         socket.on("alert:updated", onChange);
@@ -104,6 +120,7 @@ export const MyWaterProvider = ({ children }) => {
 
         return () => {
             socket.emit("device:leave", deviceId);
+            socket.off("bill:updated", onBill);
             socket.off("device:updated", onChange);
             socket.off("alert:new", onChange);
             socket.off("alert:updated", onChange);

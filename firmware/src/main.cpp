@@ -30,17 +30,8 @@ void IRAM_ATTR onPulse() { pulseCount++; }
 
 static uint32_t lastSampleMs = 0;
 
-// Litres measured but not yet acknowledged by the server. Accumulates every
-// interval and is cleared ONLY on a successful POST, so a Wi-Fi outage or a
-// failed request doesn't drop usage — it's flushed on the next good cycle.
-static double pendingVolume = 0;
-
-// Each batch of undelivered litres is tagged "<bootId>-<seq>". The SAME id is re-sent
-// on every retry and only advances once the server acknowledges (2xx), so if a reply
-// is lost after the server already saved the litres, the server can tell the retry
-// is the same batch and not count it twice.
-static uint32_t bootId = 0;
-static uint32_t batchSeq = 0;
+// Live readings only: each POST carries just the litres from the last interval.
+// Nothing is stored up while offline, and a failed request drops that reading.
 
 // ── Relay / valve + pump ────────────────────────────────────────────────────
 // Valve on GPIO4 (boot-LOW), pump on GPIO5. GPIO5 is a strapping pin that floats
@@ -207,7 +198,6 @@ void setup() {
     noInterrupts();
     pulseCount = 0;
     interrupts();
-    bootId = esp_random(); // hardware RNG (Wi-Fi is up) — makes batch ids unique per boot
     lastSampleMs = millis();
 }
 
@@ -223,7 +213,7 @@ void loop() {
     lastSampleMs = now;
 
     float flowRate = seconds > 0 ? (pulses / seconds) / K_HZ_PER_LPM : 0; // L/min
-    pendingVolume += pulses / (K_HZ_PER_LPM * 60.0f);                     // litres, buffered until delivered
+    float volume = pulses / (K_HZ_PER_LPM * 60.0f);                       // litres this interval (dropped if offline)
 
     // Re-sync the valve state on the rising edge of a reconnect, so the board
     // adopts any change made while it was offline before the next reading.
@@ -242,21 +232,13 @@ void loop() {
         http.setTimeout(4000);        // ...or on a stalled response
         http.addHeader("Content-Type", "application/json");
 
-        char body[220];
-        snprintf(body, sizeof(body), "{\"deviceId\":\"%s\",\"flowRate\":%.2f,\"volume\":%.4f,\"batchId\":\"%08lx-%lu\"}",
-                 DEVICE_ID, flowRate, pendingVolume, (unsigned long)bootId, (unsigned long)batchSeq);
+        char body[160];
+        snprintf(body, sizeof(body), "{\"deviceId\":\"%s\",\"flowRate\":%.2f,\"volume\":%.4f}", DEVICE_ID, flowRate, volume);
         int status = http.POST(body);
 
         if (status > 0) {
             String payload = http.getString();
-            Serial.printf("flow %.2f L/min  vol %.4f L  ->  %d: %s\n", flowRate, pendingVolume, status, payload.c_str());
-
-            // Delivered (2xx) → the server now owns this volume; reset the
-            // accumulator. On any error it stays buffered and retries next cycle.
-            if (status >= 200 && status < 300) {
-                pendingVolume = 0;
-                batchSeq++; // acknowledged — the next litres start a new batch
-            }
+            Serial.printf("flow %.2f L/min  vol %.4f L  ->  %d: %s\n", flowRate, volume, status, payload.c_str());
 
             // Parse the valve command and drive the relay.
             JsonDocument doc;
@@ -268,7 +250,7 @@ void loop() {
                 applyPump(open);  // pump follows the valve (interlock still guards it)
             }
         } else {
-            Serial.printf("Request failed: %s (volume kept for retry)\n", http.errorToString(status).c_str());
+            Serial.printf("Request failed: %s (reading dropped)\n", http.errorToString(status).c_str());
         }
         http.end();
     } else {

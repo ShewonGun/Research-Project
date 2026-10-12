@@ -75,6 +75,17 @@ export const emitReading = (device, { flowRate, volume, timestamp }) => {
     });
 };
 
+// A postpaid device's open cycle accrued a reading — the running litres and the
+// live charge at the current tariff. Sent on every postpaid reading, so clients
+// patch it in place rather than refetching.
+export const emitBillUpdated = (device, bill, estimate) => {
+    getIO()?.to(`device:${device._id}`).to(`user:${device.owner}`).to("admin").emit("bill:updated", {
+        deviceId: String(device._id),
+        bill: { _id: String(bill._id), volumeUsed: bill.volumeUsed, periodStart: bill.periodStart, status: bill.status },
+        estimate,
+    });
+};
+
 // A billing-mode request was filed or decided — admins refetch their queue, and
 // the requesting household sees the outcome.
 export const emitBillingRequestChanged = (request) => {

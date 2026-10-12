@@ -62,7 +62,7 @@ const Billing = () => {
                     <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
                         <FiFileText className="h-4 w-4" />
                     </span>
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">This month so far</span>
+                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">This cycle so far · live</span>
                 </div>
                 <div className="mt-4 flex items-baseline gap-1.5">
                     <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -83,7 +83,7 @@ const Billing = () => {
                     )}
                 </div>
                 <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-                    An estimate at the current tariff. You'll be billed when the cycle closes.
+                    Updates live with every meter reading, priced at the current tariff. You'll be billed when the cycle closes.
                 </p>
             </div>
 

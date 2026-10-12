@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { FiPlus, FiTrash2, FiPlayCircle, FiSave, FiDollarSign, FiCheckCircle, FiFileText, FiEdit2, FiX, FiDownload, FiLoader } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
+import { connectSocket } from "../../lib/socket.js";
 import { exportCsv, dateStamp } from "../../lib/exportCsv.js";
 import { useToast } from "../../Context/ToastContext.jsx";
 import ConfirmationBox from "../../Components/SharedComponents/ConfirmationBox.jsx";
@@ -64,6 +65,17 @@ const Billing = () => {
     useEffect(() => {
         load();
     }, [load]);
+
+    // Open cycles tick up live: each postpaid reading pushes the new running
+    // litres, patched into the matching row (no refetch).
+    useEffect(() => {
+        const socket = connectSocket();
+        if (!socket) return;
+        const onBill = ({ bill }) =>
+            setBills((list) => list.map((b) => (String(b._id) === bill._id ? { ...b, volumeUsed: bill.volumeUsed } : b)));
+        socket.on("bill:updated", onBill);
+        return () => socket.off("bill:updated", onBill);
+    }, []);
 
     const setField = (key, value) => setTariff((t) => ({ ...t, [key]: value }));
     const setTier = (i, key, value) =>

@@ -4,7 +4,9 @@ import Device from "../models/Device.js";
 import Subscription from "../models/Subscription.js";
 import { getOrOpenBill, applyPostpaidEnforcement } from "../utils/postpaid.js";
 import { runLeakDetection } from "../utils/leakDetection.js";
-import { emitReading, emitDeviceChanged } from "../config/socket.js";
+import { getActiveTariff } from "../models/Tariff.js";
+import { computeBill } from "../utils/computeBill.js";
+import { emitReading, emitDeviceChanged, emitBillUpdated } from "../config/socket.js";
 import { resolveTimeZone, dayWindow } from "../utils/dayWindow.js";
 
 // Throttle flow to this % once the prepaid balance drops below LOW_BALANCE_RATIO.
@@ -53,6 +55,17 @@ const accruePostpaid = async (device, consumedVolume) => {
     const bill = await getOrOpenBill(device);
     bill.volumeUsed += consumedVolume || 0;
     await bill.save();
+
+    // Push the running total + live charge so the household (and admin) see the
+    // bill tick up with every reading instead of waiting for the cycle to close.
+    // Display only — a failure here must never fail (and so re-send) the reading.
+    try {
+        const estimate = computeBill(bill.volumeUsed, await getActiveTariff());
+        emitBillUpdated(device, bill, estimate);
+    } catch {
+        /* clients still catch up on their next refresh */
+    }
+
     return applyPostpaidEnforcement(device);
 };
 
@@ -61,40 +74,27 @@ const accruePostpaid = async (device, consumedVolume) => {
 // @access  Public (device) — identified by deviceId, not a user token
 export const ingestReading = async (req, res) => {
     try {
-        const { deviceId, flowRate, volume, timestamp, batchId } = req.body;
+        const { deviceId, flowRate, volume } = req.body;
 
         if (!deviceId || flowRate === undefined) {
             return res.status(400).json({ message: "deviceId and flowRate are required" });
         }
 
-        const device = await Device.findOne({ deviceId }).select("+lastBatchId +lastBatchVolume");
+        const device = await Device.findOne({ deviceId });
         if (!device) {
             return res.status(404).json({ message: "Unknown device" });
         }
 
-        // Litres this request adds. A device keeps re-sending a batch (with any new
-        // litres appended) until it gets a 2xx — if our reply was lost after we had
-        // already saved it, the retry would repeat those litres. With a batchId we
-        // count only the part of the batch we haven't seen. Devices that send no
-        // batchId behave exactly as before.
-        let consumed = volume ?? 0;
-        let batchMarkers = null;
-        if (typeof batchId === "string" && batchId) {
-            const alreadyCounted = device.lastBatchId === batchId ? device.lastBatchVolume || 0 : 0;
-            consumed = Math.max(0, consumed - alreadyCounted);
-            batchMarkers = { lastBatchId: batchId, lastBatchVolume: Math.max(alreadyCounted, volume ?? 0) };
-        }
-
-        const readingAt = timestamp ? new Date(timestamp) : new Date();
+        // Live readings only: each sample is the litres used in the device's last
+        // interval, recorded at the moment it arrives (server time).
+        const consumed = Math.max(0, Number(volume) || 0);
+        const readingAt = new Date();
         await Reading.create({
             device: device._id,
             flowRate,
             volume: consumed,
             timestamp: readingAt,
         });
-        // Remember the batch immediately — before any later step that could fail — so
-        // a retry after a lost/failed reply is recognised as the same batch.
-        if (batchMarkers) await Device.updateOne({ _id: device._id }, { $set: batchMarkers });
 
         // Was the device already known-online, and what was its supply state
         // before this sample? Used below to detect a *meaningful* change worth
