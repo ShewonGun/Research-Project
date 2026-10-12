@@ -1,0 +1,6 @@
+household,false_alarms_per_day,micro_leak_caught,micro_leak_median_delay_min,burst_caught,burst_median_delay_min,house_type,people
+H26,0.19,3/3,10.0,2/2,12.5,two_person,2
+H27,0.048,3/3,13.0,2/2,10.0,family,4
+H28,0.0,3/3,12.0,2/2,17.0,one_person,1
+H29,0.0,3/3,11.0,2/2,16.0,two_person,2
+H30,0.0,3/3,13.0,2/2,19.0,family,4

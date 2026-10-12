@@ -1,0 +1,25 @@
+{
+  "alarm_threshold": 0.9,
+  "alarm_persist_min": 10,
+  "test": {
+    "false_alarms_per_day": 0.048,
+    "micro_leak_caught": "15/15",
+    "micro_leak_median_delay_min": 11.0,
+    "burst_caught": "10/10",
+    "burst_median_delay_min": 15.5
+  },
+  "baseline_rules": {
+    "false_alarms_per_day": 0.0,
+    "micro_leak_caught": "0/15",
+    "micro_leak_median_delay_min": null,
+    "burst_caught": "0/10",
+    "burst_median_delay_min": null
+  },
+  "original_dataset": {
+    "false_alarms_per_day": 0.143,
+    "micro_leak_caught": "3/3",
+    "micro_leak_median_delay_min": 16.0,
+    "burst_caught": "2/2",
+    "burst_median_delay_min": 17.0
+  }
+}
