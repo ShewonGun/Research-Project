@@ -1,0 +1,315 @@
+"""
+AquaFlow — multi-household synthetic dataset: SIMDEUM household behaviour + the
+AquaFlow loop's measured sensor model + labelled leak injection.
+
+Why: ../dataset/generate_dataset.py simulates ONE fixed household (4 people). To test
+whether a leak detector generalises to households it has never seen, this script
+generates many DIFFERENT households with pySIMDEUM (KWR Water Research Institute;
+Blokker, Vreeburg & van Dijk, 2010, "Simulating residential water demand with a
+stochastic end-use model", J. Water Resour. Plann. Manage. 136(1)).
+
+Pipeline, per household:
+  1. SIMDEUM builds a random household (one_person / two_person / family): its people
+     (age group, job away from home or not) and its fixtures.
+  2. Every simulated day, each person's routine (wake / leave / return / sleep) is
+     redrawn — weekday or weekend statistics — and SIMDEUM simulates per-second
+     water use of every fixture.
+  3. Loop adaptation: SIMDEUM assumes mains pressure (shower ≈ 8.5 L/min); the AquaFlow
+     loop's pump delivers ≈ 3.5 L/min. All flows are scaled by ONE constant
+     K_SCALE = PUMP_MEAN_LPM / SIMDEUM_SHOWER_LPM (same for every household), each
+     continuous run of use gets its own pump level (as on the real loop), and the total
+     is capped at the pump's maximum. Timing and durations are kept as SIMDEUM made them.
+  4. Leaks are injected on top, exactly as in ../dataset/generate_dataset.py
+     (micro-leak 0.18–0.45 L/min for 3–10 h; burst = pump flat out for 20–75 min).
+  5. The loop's sensor model (measured on ESP32-A1, reused from ../dataset) turns the
+     per-second flow into readings: real reading spacing, missed readings, pulse
+     quantisation, reading noise, brief dips and idle noise.
+
+Limitations (state them when reporting results):
+  • SIMDEUM's statistics are Dutch (Netherlands) defaults — not yet adapted to Sri Lanka.
+  • The flow scaling in step 3 treats the loop as a scaled model of a house.
+  • All data is simulated. Real validation needs anomalies staged on the physical loop.
+
+Outputs (in ./out), timestamps UTC like the database; one folder per household:
+  out/households.csv                 one row per household: type, people, fixtures, litres/day
+                                     (SIMDEUM's own volume, and normal use as metered on the loop)
+  out/H01/readings.csv.gz            timestamp, device, flowRate, volume, event, label,
+                                     is_anomaly, household_id
+  out/H01/1min.csv                   same, aggregated per minute
+  out/H01/events.csv                 ground truth: every fixture use and every anomaly
+
+Setup (pySIMDEUM 1.0.1 needs an older pandas; use a separate environment):
+  python3.11 -m venv simdeum-env
+  simdeum-env/bin/pip install -r requirements.txt          (Windows: simdeum-env\\Scripts\\pip)
+
+Usage:
+  python generate_simdeum_households.py                          # 30 households, 1–21 Oct 2026
+  python generate_simdeum_households.py --households 5 --seed 7
+  python generate_simdeum_households.py --start 2026-10-01 --end 2026-10-07 --households 50
+"""
+import argparse
+import csv
+import gzip
+import hashlib
+import math
+import random
+import sys
+import warnings
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import numpy as np
+
+warnings.filterwarnings("ignore")  # pySIMDEUM emits many pandas FutureWarnings
+
+from pysimdeum.core.house import Property  # noqa: E402
+from pysimdeum.core.statistics import Statistics  # noqa: E402
+
+# Reuse the loop's measured constants from the single-household generator.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dataset"))
+from generate_dataset import (  # noqa: E402
+    DIP_PROB, DIP_RANGE, DRIFT_SD, DRIFT_TAU_S, DROPOUTS, FLOW_CAP_LPM, GAP_PERCENTILES,
+    IDLE_NOISE_PROB, IDLE_ONE_PULSE, K_HZ_PER_LPM, LABEL_RANK, PULSES_PER_LITRE,
+    PUMP_MAX_LPM, PUMP_MEAN_LPM, PUMP_MIN_LPM, PUMP_RUN_SD, STEADY_NOISE, TZ,
+)
+
+SIMDEUM_SHOWER_LPM = 0.142 * 60  # SIMDEUM NormalShower intensity (0.142 L/s ≈ 8.5 L/min)
+K_SCALE = PUMP_MEAN_LPM / SIMDEUM_SHOWER_LPM  # ≈ 0.41, one constant for every household
+HOUSE_TYPES = ["one_person", "two_person", "family"]
+DAY_S = 24 * 3600
+
+# SIMDEUM end-use class → event name used in the AquaFlow dataset.
+EVENT_NAMES = {
+    "Wc": "toilet", "KitchenTap": "kitchen", "BathroomTap": "handwash", "Shower": "shower",
+    "Bathtub": "bathtub", "WashingMachine": "washing_machine", "Dishwasher": "dishwasher",
+    "OutsideTap": "outside_tap",
+}
+
+
+def build_household(house_type, stats):
+    """A random SIMDEUM household: people + fixtures (same steps as pysimdeum.built_house,
+    without its 100-pattern warm-up simulation, which costs ~1 GB of RAM)."""
+    house = Property(statistics=stats).built_house(house_type=house_type)
+    house.populate_house()
+    house.furnish_house()
+    return house
+
+
+def simulate_day(house, stats, weekend):
+    """Per-second flow (L/min) of each fixture for one day: array [fixture, second]."""
+    for user in house.users:
+        user.compute_presence(weekday=not weekend, statistics=stats)  # fresh routine per day
+    c = house.simulate(num_patterns=1)
+    c = c.sel(flowtypes="totalflow").sum("user").isel(patterns=0)  # [time, enduse], L/s
+    return c.transpose("enduse", "time").values[:, :DAY_S] * 60, list(c.coords["enduse"].values)
+
+
+def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, seed, out_dir):
+    rng = random.Random(seed)
+    np.random.seed(seed % (2 ** 32))  # pySIMDEUM draws from numpy's global generator
+    stats = Statistics()
+    house = build_household(house_type, stats)
+
+    t0 = datetime.combine(start_date, datetime.min.time(), TZ)
+    n_days = (end_date - start_date).days + 1
+    n_sec = n_days * DAY_S
+    device = hashlib.md5(hid.encode()).hexdigest()[:24]  # stable fake ObjectId per household
+
+    def pump_level():
+        return min(PUMP_MAX_LPM, max(PUMP_MIN_LPM, rng.gauss(PUMP_MEAN_LPM, PUMP_RUN_SD)))
+
+    def drift(n):
+        a = math.exp(-1 / DRIFT_TAU_S)
+        b = DRIFT_SD * math.sqrt(1 - a * a)
+        d, out = rng.gauss(0, DRIFT_SD), np.empty(n)
+        for i in range(n):
+            d = a * d + rng.gauss(0, b)
+            out[i] = d
+        return out
+
+    # ── 1–3. SIMDEUM household use, adapted to the loop ─────────────────────
+    flow = np.zeros(n_sec)                 # household use, L/min, per second
+    tag = np.zeros(n_sec, dtype=np.int16)  # index into kinds; 0 = idle
+    kinds = ["idle"]
+    events = []
+    raw_litres = 0.0
+    for d in range(n_days):
+        day = start_date + timedelta(days=d)
+        per_fixture, enduses = simulate_day(house, stats, weekend=day.weekday() >= 5)
+        raw_litres += per_fixture.sum() / 60
+        names = [EVENT_NAMES.get(e, e.lower()) for e in enduses]
+        for n in names:
+            if n not in kinds:
+                kinds.append(n)
+        off = d * DAY_S
+        total = per_fixture.sum(axis=0)
+        dominant = per_fixture.argmax(axis=0)
+        # One pump level per continuous run of use, as the real loop settles per run.
+        active = total > 0
+        edges = np.flatnonzero(np.diff(np.r_[0, active.astype(np.int8), 0]))
+        for s, e in zip(edges[::2], edges[1::2]):
+            seg = total[s:e] * K_SCALE * (pump_level() / PUMP_MEAN_LPM)
+            flow[off + s:off + e] = np.minimum(FLOW_CAP_LPM, np.maximum(0.0, seg))
+            tag[off + s:off + e] = [kinds.index(names[i]) for i in dominant[s:e]]
+        # Ground truth: each continuous use of each fixture.
+        for i, name in enumerate(names):
+            on = per_fixture[i] > 0
+            ed = np.flatnonzero(np.diff(np.r_[0, on.astype(np.int8), 0]))
+            for s, e in zip(ed[::2], ed[1::2]):
+                vol = float(np.minimum(FLOW_CAP_LPM, per_fixture[i, s:e] * K_SCALE).sum() / 60)
+                events.append((off + s, off + e, name, "normal", round(vol, 2)))
+
+    # ── 4. Anomalies (as in ../dataset/generate_dataset.py) ─────────────────
+    leak = np.zeros(n_sec)
+    burst = np.zeros(n_sec)
+    label = np.zeros(n_sec, dtype=np.int8)
+
+    def place(duration_s):
+        return rng.randint(0, max(0, n_sec - duration_s - 1))
+
+    for _ in range(n_micro):
+        dur = rng.randint(3 * 3600, 10 * 3600)
+        start, rate = place(dur), rng.uniform(0.18, 0.45)
+        leak[start:start + dur] += rate
+        label[start:start + dur] = np.maximum(label[start:start + dur], LABEL_RANK["micro_leak"])
+        events.append((start, start + dur, "micro_leak", "micro_leak", round(rate * dur / 60, 2)))
+    for _ in range(n_burst):
+        dur = rng.randint(20 * 60, 75 * 60)
+        start = place(dur)
+        burst[start:start + dur] = np.maximum(0.0, pump_level() + drift(dur))
+        label[start:start + dur] = LABEL_RANK["burst"]
+        events.append((start, start + dur, "burst", "burst", round(float(burst[start:start + dur].sum() / 60), 2)))
+
+    # True flow the meter sees each second: a burst overrides use; otherwise use + leak, capped.
+    true = np.where(burst > 0, burst, np.minimum(FLOW_CAP_LPM, flow + leak))
+    csum = np.r_[0.0, np.cumsum(true)]
+    lab_csum = {k: np.r_[0, np.cumsum(label >= k)] for k in (1, 2)}
+
+    # ── 5. Readings, timed and measured like the real device ────────────────
+    def normal_gap():
+        x = rng.random() * 100
+        i = min(int(x), 99)
+        return GAP_PERCENTILES[i] + (GAP_PERCENTILES[i + 1] - GAP_PERCENTILES[i]) * (x - i)
+
+    def utc(sec):
+        return (t0 + timedelta(seconds=float(sec))).astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+            "+00:00", "Z")
+
+    inv_label = {v: k for k, v in LABEL_RANK.items()}
+    rows = []  # (timestamp, flowRate, volume, event, label, is_anomaly, t_seconds)
+    carry = 0.0
+    t = rng.uniform(0, 6)
+    while True:
+        gap, missed = normal_gap(), False
+        u = rng.random()
+        for prob, lo, hi in DROPOUTS:
+            if u < prob:
+                gap, missed = rng.uniform(lo, hi), True
+                break
+            u -= prob
+        t += gap
+        if t >= n_sec:
+            break
+        window = normal_gap() if missed else gap
+        if missed:
+            carry = 0.0
+        a, b = max(0, int(t - window)), int(t)
+        b = max(a + 1, b)
+        true_lpm = (csum[b] - csum[a]) / (b - a)
+        if true_lpm > 0:
+            true_lpm *= max(0.0, 1 + rng.gauss(0, STEADY_NOISE))
+            if true_lpm > 2 and rng.random() < DIP_PROB:
+                true_lpm *= rng.uniform(*DIP_RANGE)
+            carry += true_lpm * K_HZ_PER_LPM * window
+            pulses = int(carry)
+            carry -= pulses
+        else:
+            carry = 0.0
+            if rng.random() < IDLE_NOISE_PROB:
+                pulses = 1 if rng.random() < IDLE_ONE_PULSE else rng.randint(2, 14)
+            else:
+                pulses = 0
+        lab = 2 if lab_csum[2][b] - lab_csum[2][a] else 1 if lab_csum[1][b] - lab_csum[1][a] else 0
+        tags = tag[a:b][flow[a:b] > 0]
+        event = kinds[int(np.bincount(tags).argmax())] if len(tags) else "idle"
+        rows.append((utc(t), round(pulses / window / K_HZ_PER_LPM, 2), round(pulses / PULSES_PER_LITRE, 4),
+                     event, inv_label[lab], 1 if lab else 0, t))
+
+    hdir = out_dir / hid
+    hdir.mkdir(parents=True, exist_ok=True)
+    with gzip.open(hdir / "readings.csv.gz", "wt", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["timestamp", "device", "flowRate", "volume", "event", "label", "is_anomaly", "household_id"])
+        w.writerows((r[0], device, r[1], r[2], r[3], r[4], r[5], hid) for r in rows)
+
+    buckets = {}
+    for r in rows:
+        buckets.setdefault(int(r[6] // 60), []).append(r)
+    with open(hdir / "1min.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["timestamp", "device", "flowRateMean", "flowRateMax", "volume", "readings", "label",
+                    "is_anomaly", "household_id"])
+        for m in sorted(buckets):
+            chunk = buckets[m]
+            flows = [r[1] for r in chunk]
+            lab = max(chunk, key=lambda r: LABEL_RANK[r[4]])[4]
+            w.writerow((utc(m * 60), device, round(sum(flows) / len(flows), 3), max(flows),
+                        round(sum(r[2] for r in chunk), 4), len(chunk), lab, 1 if lab != "normal" else 0, hid))
+
+    events.sort()
+    with open(hdir / "events.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["start", "end", "duration_s", "type", "label", "approx_volume_l", "household_id"])
+        for s, e, kind, lab, vol in events:
+            w.writerow((utc(s), utc(e), int(e - s), kind, lab, vol, hid))
+
+    people = [f"{u.age}{'/job' if getattr(u, 'job', False) else ''}" for u in house.users]
+    return {
+        "household_id": hid,
+        "device": device,
+        "house_type": house_type,
+        "people": len(house.users),
+        "members": " ".join(people),
+        "fixtures": " ".join(type(a).__name__ for a in house.appliances),
+        "simdeum_litres_per_day": round(raw_litres / n_days, 1),
+        # Normal use only (anomalies excluded), as the meter measured it on the loop.
+        "loop_litres_per_day": round(sum(r[2] for r in rows if r[4] == "normal") / n_days, 1),
+        "readings": len(rows),
+        "micro_leaks": n_micro,
+        "bursts": n_burst,
+        "seed": seed,
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--start", default="2026-10-01")
+    ap.add_argument("--end", default="2026-10-21")
+    ap.add_argument("--households", type=int, default=30)
+    ap.add_argument("--micro-leaks", type=int, default=3, help="micro-leaks per household")
+    ap.add_argument("--bursts", type=int, default=2, help="bursts per household")
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--out", default=str(Path(__file__).parent / "out"))
+    a = ap.parse_args()
+
+    start, end = datetime.fromisoformat(a.start).date(), datetime.fromisoformat(a.end).date()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    summary = []
+    for i in range(a.households):
+        hid = f"H{i + 1:02d}"
+        house_type = HOUSE_TYPES[i % len(HOUSE_TYPES)]
+        info = generate_household(hid, house_type, start, end, a.micro_leaks, a.bursts, a.seed * 1000 + i, out)
+        summary.append(info)
+        print(f"{hid}  {house_type:<10} {info['people']} people  {info['simdeum_litres_per_day']:>6} L/day (SIMDEUM)"
+              f"  {info['loop_litres_per_day']:>6} L/day (loop)  {info['readings']} readings", flush=True)
+
+    with open(out / "households.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(summary[0]))
+        w.writeheader()
+        w.writerows(summary)
+    print(f"\n{len(summary)} households → {out}")
+
+
+if __name__ == "__main__":
+    main()
