@@ -1,0 +1,5 @@
+detector,micro_leak_recall,burst_recall,false_alarms_per_day,micro_leak_delay_min,burst_delay_min,caught_total
+Random Forest,100% ± 0%,92% ± 8%,0.21 ± 0.05,10,18,"120/120 leaks, 55/60 bursts"
+Gradient boosting,100% ± 0%,93% ± 8%,0.25 ± 0.08,11,20,"120/120 leaks, 56/60 bursts"
+Isolation Forest (no labels),92% ± 7%,75% ± 10%,0.16 ± 0.04,59,33,"111/120 leaks, 45/60 bursts"
+Current backend rules,0% ± 0%,0% ± 0%,0.00 ± 0.00,–,–,"0/120 leaks, 0/60 bursts"
