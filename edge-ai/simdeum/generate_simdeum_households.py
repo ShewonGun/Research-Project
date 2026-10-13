@@ -19,8 +19,12 @@ Pipeline, per household:
      K_SCALE = PUMP_MEAN_LPM / SIMDEUM_SHOWER_LPM (same for every household), each
      continuous run of use gets its own pump level (as on the real loop), and the total
      is capped at the pump's maximum. Timing and durations are kept as SIMDEUM made them.
-  4. Leaks are injected on top, exactly as in ../dataset/generate_dataset.py
-     (micro-leak 0.18–0.45 L/min for 3–10 h; burst = pump flat out for 20–75 min).
+  3b. Hard normal cases are added: garden watering and tank filling (5–30 min near pump
+     level), longer than any fixture, so "long" alone does not mean "burst".
+     Every 6th household (H06, H12, …) works nights: its routine runs 10 h later.
+  4. Leaks are injected on top, in realistic shapes whose flows overlap normal use:
+     steady trickle (0.15–1.5 L/min), leaking cistern (pump-level refills every
+     1.5–5 min), slowly growing leak; bursts = pump flat out for 20–75 min.
   5. The loop's sensor model (measured on ESP32-A1, reused from ../dataset) turns the
      per-second flow into readings: real reading spacing, missed readings, pulse
      quantisation, reading noise, brief dips and idle noise.
@@ -68,7 +72,7 @@ from pysimdeum.core.statistics import Statistics  # noqa: E402
 # Reuse the loop's measured constants from the single-household generator.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dataset"))
 from generate_dataset import (  # noqa: E402
-    DIP_PROB, DIP_RANGE, DRIFT_SD, DRIFT_TAU_S, DROPOUTS, FLOW_CAP_LPM, GAP_PERCENTILES,
+    poisson, DIP_PROB, DIP_RANGE, DRIFT_SD, DRIFT_TAU_S, DROPOUTS, FLOW_CAP_LPM, GAP_PERCENTILES,
     IDLE_NOISE_PROB, IDLE_ONE_PULSE, K_HZ_PER_LPM, LABEL_RANK, PULSES_PER_LITRE,
     PUMP_MAX_LPM, PUMP_MEAN_LPM, PUMP_MIN_LPM, PUMP_RUN_SD, STEADY_NOISE, TZ,
 )
@@ -77,6 +81,14 @@ SIMDEUM_SHOWER_LPM = 0.142 * 60  # SIMDEUM NormalShower intensity (0.142 L/s ≈
 K_SCALE = PUMP_MEAN_LPM / SIMDEUM_SHOWER_LPM  # ≈ 0.41, one constant for every household
 HOUSE_TYPES = ["one_person", "two_person", "family"]
 DAY_S = 24 * 3600
+NIGHT_SHIFT_EVERY = 6   # every 6th household (H06, H12, …) works nights…
+NIGHT_SHIFT_H = 10      # …so its whole routine runs 10 h later
+LEAK_SHAPES = ["steady", "cistern", "growing"]
+# Hard normal cases: (event name, events per day, (min, max) minutes, local hours, fraction of pump level)
+HARD_NORMALS = [
+    ("garden", 0.25, (10, 30), [6, 7, 16, 17, 18], (0.6, 1.0)),
+    ("tank_fill", 0.2, (5, 20), [6, 7, 8, 9, 10, 17, 18, 19, 20], (0.95, 1.0)),
+]
 
 # SIMDEUM end-use class → event name used in the AquaFlow dataset.
 EVENT_NAMES = {
@@ -104,7 +116,7 @@ def simulate_day(house, stats, weekend):
     return c.transpose("enduse", "time").values[:, :DAY_S] * 60, list(c.coords["enduse"].values)
 
 
-def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, seed, out_dir):
+def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, seed, out_dir, night_shift=False):
     rng = random.Random(seed)
     np.random.seed(seed % (2 ** 32))  # pySIMDEUM draws from numpy's global generator
     stats = Statistics()
@@ -136,6 +148,8 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
     for d in range(n_days):
         day = start_date + timedelta(days=d)
         per_fixture, enduses = simulate_day(house, stats, weekend=day.weekday() >= 5)
+        if night_shift:  # the whole routine moves NIGHT_SHIFT_H later: active at night, asleep by day
+            per_fixture = np.roll(per_fixture, NIGHT_SHIFT_H * 3600, axis=1)
         raw_litres += per_fixture.sum() / 60
         names = [EVENT_NAMES.get(e, e.lower()) for e in enduses]
         for n in names:
@@ -159,7 +173,34 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
                 vol = float(np.minimum(FLOW_CAP_LPM, per_fixture[i, s:e] * K_SCALE).sum() / 60)
                 events.append((off + s, off + e, name, "normal", round(vol, 2)))
 
-    # ── 4. Anomalies (as in ../dataset/generate_dataset.py) ─────────────────
+    # ── 3b. Hard NORMAL cases: long, continuous, legitimate use ─────────────
+    # Garden watering and tank/bucket filling run at pump level for 5–30 min — longer
+    # than any fixture and overlapping the shortest bursts — so the model must learn
+    # that "long" alone is not a burst. Labelled normal.
+    def place_daily(day_index, hours):
+        return day_index * DAY_S + rng.choice(hours) * 3600 + rng.randint(0, 3599)
+
+    for kind, per_day, minutes, hours, frac in HARD_NORMALS:
+        if kind not in kinds:
+            kinds.append(kind)
+        for d in range(n_days):
+            for _ in range(poisson(rng, per_day)):
+                dur = rng.randint(minutes[0] * 60, minutes[1] * 60)
+                start = place_daily(d, hours)
+                end = min(n_sec, start + dur)
+                lpm = rng.uniform(*frac) * np.maximum(0.0, pump_level() + drift(end - start))
+                flow[start:end] = np.minimum(FLOW_CAP_LPM, flow[start:end] + lpm)
+                tag[start:end] = kinds.index(kind)
+                events.append((start, end, kind, "normal", round(float(lpm.sum() / 60), 2)))
+
+    # ── 4. Anomalies ────────────────────────────────────────────────────────
+    # Micro-leaks come in three realistic shapes, with flows that OVERLAP normal use so
+    # flow level alone can't identify them:
+    #   steady   — a constant trickle, 0.15–1.5 L/min, 2–10 h
+    #   cistern  — a leaking toilet cistern: refills at pump level for 8–20 s every
+    #              1.5–5 min, 2–8 h (a pattern the physical loop can reproduce)
+    #   growing  — starts at ~0.05 L/min and grows to 0.4–1.2 L/min over 3–12 h
+    # Bursts: the pump flat out non-stop for 20–75 min (as in ../dataset).
     leak = np.zeros(n_sec)
     burst = np.zeros(n_sec)
     label = np.zeros(n_sec, dtype=np.int8)
@@ -168,11 +209,25 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
         return rng.randint(0, max(0, n_sec - duration_s - 1))
 
     for _ in range(n_micro):
-        dur = rng.randint(3 * 3600, 10 * 3600)
-        start, rate = place(dur), rng.uniform(0.18, 0.45)
-        leak[start:start + dur] += rate
+        shape = rng.choice(LEAK_SHAPES)
+        if shape == "steady":
+            dur = rng.randint(2 * 3600, 10 * 3600)
+            start = place(dur)
+            leak[start:start + dur] += rng.uniform(0.15, 1.5)
+        elif shape == "cistern":
+            dur = rng.randint(2 * 3600, 8 * 3600)
+            start, t, every = place(dur), 0, rng.randint(90, 300)
+            while t < dur:
+                fill = rng.randint(8, 20)
+                leak[start + t:start + min(dur, t + fill)] += 0.9 * pump_level()
+                t += every + rng.randint(-15, 15)
+        else:  # growing
+            dur = rng.randint(3 * 3600, 12 * 3600)
+            start = place(dur)
+            leak[start:start + dur] += np.linspace(0.05, rng.uniform(0.4, 1.2), dur)
         label[start:start + dur] = np.maximum(label[start:start + dur], LABEL_RANK["micro_leak"])
-        events.append((start, start + dur, "micro_leak", "micro_leak", round(rate * dur / 60, 2)))
+        events.append((start, start + dur, f"{shape}_leak", "micro_leak",
+                       round(float(leak[start:start + dur].sum() / 60), 2)))
     for _ in range(n_burst):
         dur = rng.randint(20 * 60, 75 * 60)
         start = place(dur)
@@ -268,6 +323,7 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
         "household_id": hid,
         "device": device,
         "house_type": house_type,
+        "routine": "night_shift" if night_shift else "day",
         "people": len(house.users),
         "members": " ".join(people),
         "fixtures": " ".join(type(a).__name__ for a in house.appliances),
@@ -286,7 +342,7 @@ def main():
     ap.add_argument("--start", default="2026-10-01")
     ap.add_argument("--end", default="2026-10-21")
     ap.add_argument("--households", type=int, default=30)
-    ap.add_argument("--micro-leaks", type=int, default=3, help="micro-leaks per household")
+    ap.add_argument("--micro-leaks", type=int, default=4, help="micro-leaks per household")
     ap.add_argument("--bursts", type=int, default=2, help="bursts per household")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(Path(__file__).parent / "out"))
@@ -299,9 +355,11 @@ def main():
     for i in range(a.households):
         hid = f"H{i + 1:02d}"
         house_type = HOUSE_TYPES[i % len(HOUSE_TYPES)]
-        info = generate_household(hid, house_type, start, end, a.micro_leaks, a.bursts, a.seed * 1000 + i, out)
+        night = (i + 1) % NIGHT_SHIFT_EVERY == 0
+        info = generate_household(hid, house_type, start, end, a.micro_leaks, a.bursts, a.seed * 1000 + i, out,
+                                  night_shift=night)
         summary.append(info)
-        print(f"{hid}  {house_type:<10} {info['people']} people  {info['simdeum_litres_per_day']:>6} L/day (SIMDEUM)"
+        print(f"{hid}  {house_type:<10} {info['routine']:<11} {info['people']} people  {info['simdeum_litres_per_day']:>6} L/day (SIMDEUM)"
               f"  {info['loop_litres_per_day']:>6} L/day (loop)  {info['readings']} readings", flush=True)
 
     with open(out / "households.csv", "w", newline="") as f:
