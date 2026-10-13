@@ -66,22 +66,32 @@ def load_real_readings(readings_csv, events_csv=None):
     """REAL readings exported from MongoDB (columns: timestamp, flowRate, volume) →
     per-minute series. `events_csv` (optional) lists staged anomalies with columns
     start, end, type, label (label = burst or micro_leak), times in UTC or with offset."""
-    r = pd.read_csv(readings_csv)
-    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True)
-    g = r.set_index("timestamp").sort_index().resample("1min")
-    df = pd.DataFrame({"flowRateMean": g["flowRate"].mean(), "flowRateMax": g["flowRate"].max(),
-                       "volume": g["volume"].sum(), "readings": g["flowRate"].count()})
-    df = df[df["readings"] > 0]
-    df = _complete_grid(df)
-    df["label"] = "normal"
     events = pd.DataFrame(columns=["start", "end", "type", "label"])
     if events_csv:
         events = pd.read_csv(events_csv)
         events["start"] = pd.to_datetime(events["start"], utc=True)
         events["end"] = pd.to_datetime(events["end"], utc=True)
-        for e in events.itertuples():
-            df.loc[e.start:e.end, "label"] = e.label
-    return df, events
+    return readings_to_minutes(read_readings(readings_csv), events), events
+
+
+def read_readings(readings_csv):
+    """Raw readings CSV (e.g. a MongoDB export) → DataFrame[timestamp (UTC), flowRate, volume]."""
+    r = pd.read_csv(readings_csv)
+    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True, format="mixed")
+    return r[["timestamp", "flowRate", "volume"]].sort_values("timestamp").reset_index(drop=True)
+
+
+def readings_to_minutes(r, events=None):
+    """Raw readings → per-minute series on a complete grid, labelled from `events`."""
+    g = r.set_index("timestamp").resample("1min")
+    df = pd.DataFrame({"flowRateMean": g["flowRate"].mean(), "flowRateMax": g["flowRate"].max(),
+                       "volume": g["volume"].sum(), "readings": g["flowRate"].count()})
+    df = df[df["readings"] > 0]
+    df = _complete_grid(df)
+    df["label"] = "normal"
+    for e in (events.itertuples() if events is not None else []):
+        df.loc[e.start:e.end, "label"] = e.label
+    return df
 
 
 # ── Features (trailing windows only: at minute t, only minutes ≤ t are used) ──
