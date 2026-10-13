@@ -56,6 +56,7 @@ import csv
 import gzip
 import hashlib
 import math
+import os
 import random
 import sys
 import warnings
@@ -65,6 +66,9 @@ from pathlib import Path
 import numpy as np
 
 warnings.filterwarnings("ignore")  # pySIMDEUM emits many pandas FutureWarnings
+# pySIMDEUM imports matplotlib; nothing is plotted here. Force a headless backend so a
+# notebook's inline backend setting (e.g. Colab's MPLBACKEND) doesn't break the import.
+os.environ["MPLBACKEND"] = "Agg"
 
 from pysimdeum.core.house import Property  # noqa: E402
 from pysimdeum.core.statistics import Statistics  # noqa: E402
