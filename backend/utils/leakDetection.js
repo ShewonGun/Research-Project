@@ -21,7 +21,7 @@ const MICRO_MIN_SAMPLES = 12; // …across at least this many samples
 
 // Is there already an open (active/acknowledged) alert of this type?
 const openAlert = (deviceId, type) =>
-    Alert.findOne({ device: deviceId, type, status: { $in: ["active", "acknowledged"] } });
+    Alert.findOne({ device: deviceId, type, source: { $ne: "model" }, status: { $in: ["active", "acknowledged"] } });
 
 // Analyse the latest sample. Mutates + saves `device` on burst (auto shut-off).
 // Returns the created Alert, or null. Assumes the current reading is already
@@ -86,7 +86,7 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
     // ---- Genuine idle → clear any standing micro-leak suspicion ----
     if (flowRate < MICRO_MIN) {
         const cleared = await Alert.updateMany(
-            { device: device._id, type: "micro-leak", status: "active" },
+            { device: device._id, type: "micro-leak", status: "active", source: { $ne: "model" } },
             { status: "resolved", resolvedAt: new Date(), autoAction: "auto-resolved" }
         );
         if (cleared.modifiedCount > 0) {

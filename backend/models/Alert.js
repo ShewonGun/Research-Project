@@ -20,6 +20,9 @@ const alertSchema = new mongoose.Schema(
         message: { type: String },
         autoAction: { type: String, default: null }, // e.g. "valve-closed", "auto-resolved"
 
+        // Which detector raised it: the rule-based one or the ML model service.
+        source: { type: String, enum: ["rules", "model"], default: "rules" },
+
         status: { type: String, enum: ["active", "acknowledged", "resolved"], default: "active" },
         startedAt: { type: Date, default: Date.now },
         acknowledgedAt: { type: Date },
