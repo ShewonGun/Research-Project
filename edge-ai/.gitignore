@@ -1,0 +1,5 @@
+# Generated / raw data and logs — regenerate or re-export, don't commit
+dataset/out_seeds/
+dataset/real/*.csv
+train.log
+model/results/real_injection/
