@@ -90,6 +90,10 @@ export const startModelLeakDetection = () => {
         running = true;
         try {
             await sweepModelDetection(baseUrl);
+        } catch (err) {
+            // e.g. the database is briefly unreachable — log it and try again next minute,
+            // never let it crash the server.
+            console.error(`Model leak detection sweep: ${err.message}`);
         } finally {
             running = false;
         }
