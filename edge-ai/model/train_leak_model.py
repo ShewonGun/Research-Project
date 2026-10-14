@@ -147,6 +147,8 @@ def main():
     ap.add_argument("--real", help="REAL readings CSV exported from MongoDB (timestamp, flowRate, volume)")
     ap.add_argument("--real-events", help="staged anomalies on the real loop (start, end, type, label)")
     ap.add_argument("--fa-budget", type=float, default=0.1, help="max false alarms per day, per alarm, when tuning")
+    ap.add_argument("--final-features", default="all", choices=list(ld.FEATURE_SETS),
+                    help="feature set for the saved final model (the ablation compares them)")
     ap.add_argument("--out", default=str(HERE / "results"))
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
@@ -207,7 +209,7 @@ def main():
     # ── Final model: train on all but the last fold (H01–H25), tune on the last (H26–H30) ──
     n_val = len(homes) // N_FOLDS
     final_train, final_val = homes[:-n_val], homes[-n_val:]
-    model, cols, tuned = fit_and_tune(best_kind, "all", feats, data, final_train, final_val, a.fa_budget, a.seed)
+    model, cols, tuned = fit_and_tune(best_kind, a.final_features, feats, data, final_train, final_val, a.fa_budget, a.seed)
     joblib.dump({"model": model, "features": cols, "alarms": tuned, "model_type": best_name}, out / "leak_model.joblib")
 
     extra = {}
