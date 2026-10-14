@@ -29,6 +29,8 @@ import leakdetect as ld  # noqa: E402
 
 MODEL_PATH = os.environ.get("LEAK_MODEL_PATH", str(HERE.parent / "model" / "results" / "leak_model.joblib"))
 MAX_LPM = 6.0          # loop scale: anything above is a sensor glitch / out of the model's range
+LATCH_MIN = 10         # an alarm stays "active" this long after it last fired (a leaking cistern
+                       # only looks like a leak in bursts, with quiet minutes in between)
 MIN_MINUTES = 30       # not enough history → no verdict
 STALE_MIN = 3          # newest reading older than this → device is offline, no verdict
 
@@ -76,5 +78,5 @@ def score(req: ScoreRequest):
     for name, (thr, persist) in saved["alarms"].items():
         s = sc[name]
         out[name] = {"score": round(float(s.iloc[-1]), 3), "threshold": thr, "persist": persist,
-                     "active": bool(ld.alarms(s, thr, persist).iloc[-1])}
+                     "active": bool(ld.alarms(s, thr, persist).iloc[-LATCH_MIN:].any())}
     return out
