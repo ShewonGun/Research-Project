@@ -5,3 +5,4 @@ train.log
 model/results/real_injection/
 __pycache__/
 forecast/results/*.joblib
+forecast/results_patterned/*.joblib
