@@ -13,3 +13,15 @@ raises / clears alerts (`source: "model"`) from the verdict. Unset = feature off
 * Alert only — the model never closes the valve; the 30 L/min rule keeps that job.
 * Trained at AquaFlow-loop scale (pump ≈ 3.5 L/min); flows are clamped to 6 L/min.
 * Validated on simulated data only (see `../model/results/REPORT.md`).
+
+## Usage forecast
+
+`POST /forecast` (used by the backend's `GET /api/forecast?device=<id>`): the next 7 days of litres with
+an 80 % range, from the household's own last 14 days of daily totals. Uses
+`../forecast/results_patterned/forecast_model.joblib` (`python ../forecast/train_forecast.py --daily-csv
+data/patterned_daily.csv` creates it; not in git). With 7+ of the last 14 days present it uses the model
+(offline days are filled with the household's median); with 3-6 it falls back to the plain average;
+fewer than 3 days -> no forecast. Restart the service after pulling to enable it.
+
+The backend adds, by billing mode, a prepaid run-out date (balance vs forecast, capped by plan expiry) or a
+postpaid bill estimate (open cycle so far + forecast to a 30-day cycle end, priced with the active tariff).

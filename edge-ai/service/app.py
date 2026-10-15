@@ -1,7 +1,9 @@
 """
 AquaFlow leak-model service — scores a device's recent readings with the trained model.
 
-  POST /score   {"readings": [{"timestamp", "flowRate", "volume"}, ...]}   (last ~12 h)
+  POST /score     {"readings": [{"timestamp", "flowRate", "volume"}, ...]}   (last ~12 h)
+  POST /forecast  {"lastDay": "YYYY-MM-DD", "history": [{"day", "litres"}, ...]}
+                  -> litres for each of the next 7 days with an 80 % range
   GET  /health
 
 Returns, per alarm (micro_leak, burst): the latest score, the saved threshold / persistence
@@ -12,7 +14,8 @@ The model was trained at AquaFlow-loop scale (pump ≈ 3.5 L/min), so flows are 
 MAX_LPM before scoring.
 
 Run (from edge-ai/service):  uvicorn app:app --port 8001
-Env: LEAK_MODEL_PATH (default ../model/results/leak_model.joblib)
+Env: LEAK_MODEL_PATH     (default ../model/results/leak_model.joblib)
+     FORECAST_MODEL_PATH (default ../forecast/results_patterned/forecast_model.joblib)
 """
 import os
 import sys
@@ -35,7 +38,20 @@ MIN_MINUTES = 30       # not enough history → no verdict
 STALE_MIN = 3          # newest reading older than this → device is offline, no verdict
 
 saved = joblib.load(MODEL_PATH)
-app = FastAPI(title="AquaFlow leak model")
+app = FastAPI(title="AquaFlow leak + usage model")
+
+# ── Usage forecast ───────────────────────────────────────────────────────────
+sys.path.insert(0, str(HERE.parent / "forecast"))
+import numpy as np  # noqa: E402
+import train_forecast as tf  # noqa: E402
+
+FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "forecast" / "results_patterned" / "forecast_model.joblib"))
+try:
+    forecast_saved = joblib.load(FORECAST_PATH)
+except Exception:        # no forecast model on this machine -> simple-average fallback only
+    forecast_saved = None
+MIN_KNOWN_MODEL = 7      # of the last 14 days, at least this many must have data to use the model
+MIN_KNOWN_AVERAGE = 3    # below this there is nothing sensible to forecast from
 
 
 class Reading(BaseModel):
@@ -51,7 +67,7 @@ class ScoreRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": saved["model_type"], "alarms": saved["alarms"]}
+    return {"ok": True, "model": saved["model_type"], "alarms": saved["alarms"], "forecast_model": forecast_saved is not None}
 
 
 @app.post("/score")
@@ -80,3 +96,40 @@ def score(req: ScoreRequest):
         out[name] = {"score": round(float(s.iloc[-1]), 3), "threshold": thr, "persist": persist,
                      "active": bool(ld.alarms(s, thr, persist).iloc[-LATCH_MIN:].any())}
     return out
+
+
+class DayTotal(BaseModel):
+    day: str
+    litres: float
+
+
+class ForecastRequest(BaseModel):
+    lastDay: str                    # newest COMPLETE local day in `history`
+    history: list[DayTotal]         # days with data; days the device was offline are simply absent
+
+
+@app.post("/forecast")
+def forecast(req: ForecastRequest):
+    last = pd.Timestamp(req.lastDay)
+    window = pd.date_range(end=last, periods=tf.LAGS, freq="D")
+    known = {pd.Timestamp(d.day): d.litres for d in req.history if pd.Timestamp(d.day) in window}
+    n_known = len(known)
+    if n_known < MIN_KNOWN_AVERAGE:
+        return {"ready": False, "reason": "not enough history", "daysUsed": n_known}
+    targets = [last + pd.Timedelta(days=h) for h in tf.HORIZONS]
+    vals = np.array(list(known.values()))
+    if forecast_saved is None or n_known < MIN_KNOWN_MODEL:
+        mean = float(vals.mean())
+        out = [{"day": t.date().isoformat(), "litres": round(mean, 1), "low": round(mean * 0.5, 1), "high": round(mean * 1.5, 1)} for t in targets]
+        return {"ready": True, "method": "average", "daysUsed": n_known, "forecast": out}
+    fill = float(np.median(vals))                       # offline days -> the household's usual day
+    hist = np.array([known.get(d, fill) for d in window])[::-1]   # hist[0] = newest day
+    out = []
+    for h, t in zip(tf.HORIZONS, targets):
+        feat, scale = tf.features_at(hist, t, h)
+        x = pd.DataFrame([feat])[forecast_saved["features"]]
+        pred = float(forecast_saved["model"].predict(x)[0]) * scale
+        hw = forecast_saved["range_halfwidth_80"][h]
+        out.append({"day": t.date().isoformat(), "litres": round(max(pred, 0), 1),
+                    "low": round(max(pred - hw, 0), 1), "high": round(pred + hw, 1)})
+    return {"ready": True, "method": "model", "daysUsed": n_known, "imputedDays": tf.LAGS - n_known, "forecast": out}
