@@ -6,3 +6,4 @@ leak_detection/results/real_injection/
 __pycache__/
 usage_forecast/results/*.joblib
 usage_forecast/results_patterned/*.joblib
+data/loop_household/out_a1/

@@ -45,6 +45,7 @@ Outputs (in ./out), all timestamps UTC like the database:
 Usage:
   python generate_dataset.py                       # 2026-10-01 .. 2026-10-21, seed 42
   python generate_dataset.py --start 2026-10-01 --end 2026-10-21 --seed 7
+  python generate_dataset.py --no-anomalies --start 2026-10-02 --end 2026-10-15   # normal use only
 """
 import argparse
 import csv
@@ -331,7 +332,11 @@ def main():
     ap.add_argument("--end", default="2026-10-21")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(Path(__file__).parent / "out"))
+    ap.add_argument("--no-anomalies", action="store_true", help="normal household use only (no leaks or bursts), e.g. for usage forecasting")
     a = ap.parse_args()
+    if a.no_anomalies:
+        global N_MICRO_LEAKS, N_BURSTS
+        N_MICRO_LEAKS = N_BURSTS = 0
 
     start, end = datetime.fromisoformat(a.start).date(), datetime.fromisoformat(a.end).date()
     stem, rows, events = generate(start, end, a.seed, Path(a.out))

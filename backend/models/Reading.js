@@ -30,6 +30,11 @@ const readingSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        // true on sample readings written by a seed script (never set by a real device), so
+        // they can always be told apart from — and removed without touching — real telemetry.
+        synthetic: {
+            type: Boolean,
+        },
     },
     {
         timeseries: {
