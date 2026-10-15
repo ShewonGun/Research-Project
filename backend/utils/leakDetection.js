@@ -14,10 +14,18 @@ import { emitAlertChanged } from "../config/socket.js";
 // only fires when the trickle is *continuous* (any idle reading breaks it), and
 // once genuine idle flow returns an active micro-leak auto-resolves.
 export const BURST_LPM = 30;
+// A single reading ≥ BURST_LPM can be a sensor glitch (spikes of 700+ L/min have been
+// recorded), so the supply is only cut once this many consecutive readings are all ≥ BURST_LPM.
+// Stored readings are never altered — this only decides whether to raise the burst alert.
+export const BURST_CONFIRM_READINGS = 3;
 const MICRO_MIN = 0.15;
 const MICRO_MAX = 2.5;
 const MICRO_WINDOW_MS = 60 * 1000; // trickle must persist at least ~1 min
 const MICRO_MIN_SAMPLES = 12; // …across at least this many samples
+
+// True when the newest `flows` (latest first) are enough readings and all at burst level.
+export const isSustainedBurst = (flows, needed = BURST_CONFIRM_READINGS) =>
+    flows.length >= needed && flows.slice(0, needed).every((f) => f >= BURST_LPM);
 
 // Is there already an open (active/acknowledged) alert of this type?
 const openAlert = (deviceId, type) =>
@@ -32,6 +40,10 @@ export const runLeakDetection = async (device, flowRate, readingAt = new Date())
     // ---- Burst ----
     if (flowRate >= BURST_LPM) {
         if (await openAlert(device._id, "burst")) return null;
+
+        // Glitch guard: the current reading is already stored, so look at the latest few.
+        const latest = await Reading.find({ device: device._id }).sort({ timestamp: -1 }).limit(BURST_CONFIRM_READINGS).select("flowRate").lean();
+        if (!isSustainedBurst(latest.map((r) => r.flowRate))) return null;
 
         device.adminValveState = "closed";
         device.throttlePercent = 0;
