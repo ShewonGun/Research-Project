@@ -14,8 +14,8 @@ The model was trained at AquaFlow-loop scale (pump ≈ 3.5 L/min), so flows are 
 MAX_LPM before scoring.
 
 Run (from edge-ai/service):  uvicorn app:app --port 8001
-Env: LEAK_MODEL_PATH     (default ../model/results/leak_model.joblib)
-     FORECAST_MODEL_PATH (default ../forecast/results_patterned/forecast_model.joblib)
+Env: LEAK_MODEL_PATH     (default ../leak_detection/results/leak_model.joblib)
+     FORECAST_MODEL_PATH (default ../usage_forecast/results_patterned/forecast_model.joblib)
 """
 import os
 import sys
@@ -27,10 +27,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "model"))
+sys.path.insert(0, str(HERE.parent / "leak_detection"))
 import leakdetect as ld  # noqa: E402
 
-MODEL_PATH = os.environ.get("LEAK_MODEL_PATH", str(HERE.parent / "model" / "results" / "leak_model.joblib"))
+MODEL_PATH = os.environ.get("LEAK_MODEL_PATH", str(HERE.parent / "leak_detection" / "results" / "leak_model.joblib"))
 MAX_LPM = 6.0          # loop scale: anything above is a sensor glitch / out of the model's range
 LATCH_MIN = 10         # an alarm stays "active" this long after it last fired (a leaking cistern
                        # only looks like a leak in bursts, with quiet minutes in between)
@@ -41,11 +41,11 @@ saved = joblib.load(MODEL_PATH)
 app = FastAPI(title="AquaFlow leak + usage model")
 
 # ── Usage forecast ───────────────────────────────────────────────────────────
-sys.path.insert(0, str(HERE.parent / "forecast"))
+sys.path.insert(0, str(HERE.parent / "usage_forecast"))
 import numpy as np  # noqa: E402
 import train_forecast as tf  # noqa: E402
 
-FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "forecast" / "results_patterned" / "forecast_model.joblib"))
+FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "usage_forecast" / "results_patterned" / "forecast_model.joblib"))
 try:
     forecast_saved = joblib.load(FORECAST_PATH)
 except Exception:        # no forecast model on this machine -> simple-average fallback only

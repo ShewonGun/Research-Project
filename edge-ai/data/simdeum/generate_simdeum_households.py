@@ -2,7 +2,7 @@
 AquaFlow — multi-household synthetic dataset: SIMDEUM household behaviour + the
 AquaFlow loop's measured sensor model + labelled leak injection.
 
-Why: ../dataset/generate_dataset.py simulates ONE fixed household (4 people). To test
+Why: ../loop_household/generate_dataset.py simulates ONE fixed household (4 people). To test
 whether a leak detector generalises to households it has never seen, this script
 generates many DIFFERENT households with pySIMDEUM (KWR Water Research Institute;
 Blokker, Vreeburg & van Dijk, 2010, "Simulating residential water demand with a
@@ -25,7 +25,7 @@ Pipeline, per household:
   4. Leaks are injected on top, in realistic shapes whose flows overlap normal use:
      steady trickle (0.15–1.5 L/min), leaking cistern (pump-level refills every
      1.5–5 min), slowly growing leak; bursts = pump flat out for 20–75 min.
-  5. The loop's sensor model (measured on ESP32-A1, reused from ../dataset) turns the
+  5. The loop's sensor model (measured on ESP32-A1, reused from ../loop_household) turns the
      per-second flow into readings: real reading spacing, missed readings, pulse
      quantisation, reading noise, brief dips and idle noise.
 
@@ -74,7 +74,7 @@ from pysimdeum.core.house import Property  # noqa: E402
 from pysimdeum.core.statistics import Statistics  # noqa: E402
 
 # Reuse the loop's measured constants from the single-household generator.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dataset"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "loop_household"))
 from generate_dataset import (  # noqa: E402
     poisson, DIP_PROB, DIP_RANGE, DRIFT_SD, DRIFT_TAU_S, DROPOUTS, FLOW_CAP_LPM, GAP_PERCENTILES,
     IDLE_NOISE_PROB, IDLE_ONE_PULSE, K_HZ_PER_LPM, LABEL_RANK, PULSES_PER_LITRE,
@@ -204,7 +204,7 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
     #   cistern  — a leaking toilet cistern: refills at pump level for 8–20 s every
     #              1.5–5 min, 2–8 h (a pattern the physical loop can reproduce)
     #   growing  — starts at ~0.05 L/min and grows to 0.4–1.2 L/min over 3–12 h
-    # Bursts: the pump flat out non-stop for 20–75 min (as in ../dataset).
+    # Bursts: the pump flat out non-stop for 20–75 min (as in ../loop_household).
     leak = np.zeros(n_sec)
     burst = np.zeros(n_sec)
     label = np.zeros(n_sec, dtype=np.int8)

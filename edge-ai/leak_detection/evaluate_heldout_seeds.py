@@ -1,4 +1,4 @@
-"""Evaluate the saved model on held-out loop-calibrated datasets (dataset/out_seeds/seed*)
+"""Evaluate the saved model on held-out loop-calibrated datasets (data/loop_household/out_seeds/seed*)
 generated with generate_dataset.py using seeds never used in training. SYNTHETIC data."""
 import json, sys
 from pathlib import Path
@@ -12,7 +12,7 @@ import train_leak_model as tlm  # noqa: E402
 saved = joblib.load(HERE / "results" / "leak_model.joblib")
 kind = "rf" if saved["model_type"] == "Random Forest" else "hgb"
 results, rows = [], []
-for d in sorted((HERE.parent / "dataset" / "out_seeds").glob("seed*")):
+for d in sorted((HERE.parent / "data" / "loop_household" / "out_seeds").glob("seed*")):
     df, ev = ld.load_single_file(next(d.glob("*_1min.csv")), next(d.glob("*_events.csv")))
     X = ld.make_features(df)[saved["features"]]
     res = tlm.evaluate_house(kind, tlm.detect(kind, saved["model"], saved["alarms"], X), df.index, ev)

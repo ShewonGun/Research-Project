@@ -2,8 +2,8 @@
 AquaFlow — daily water-usage forecast, 1-7 days ahead.
 
 Data (either):
-  * ../simdeum/out_forecast/H01..H30/1min.csv — 10 weeks of NORMAL use (no leaks), made with
-      python ../simdeum/generate_simdeum_households.py --start 2026-07-01 --end 2026-09-09 \
+  * ../data/simdeum/out_forecast/H01..H30/1min.csv — 10 weeks of NORMAL use (no leaks), made with
+      python ../data/simdeum/generate_simdeum_households.py --start 2026-07-01 --end 2026-09-09 \
              --micro-leaks 0 --bursts 0 --seed 7 --out out_forecast
     The simulator redraws each day independently: no weekly pattern, no day-to-day memory.
   * --daily-csv data/patterned_daily.csv — the same households with ASSUMED patterns added
@@ -89,7 +89,7 @@ def metrics(df, col):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=str(HERE.parent / "simdeum" / "out_forecast"))
+    ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out_forecast"))
     ap.add_argument("--daily-csv", help="daily-litres CSV (home, day, litres, house_type) instead of the minute files")
     ap.add_argument("--out", default=None, help="default results/ (results_patterned/ with --daily-csv)")
     a = ap.parse_args()

@@ -55,7 +55,7 @@ def load_household(folder):
 
 
 def load_single_file(minute_csv, events_csv):
-    """The original single-household generator's files (../dataset/out)."""
+    """The original single-household generator's files (../data/loop_household/out)."""
     df = pd.read_csv(minute_csv, parse_dates=["timestamp"]).set_index("timestamp").sort_index()
     df = _complete_grid(df)
     df["label"] = df["label"].ffill(limit=2).fillna("normal")

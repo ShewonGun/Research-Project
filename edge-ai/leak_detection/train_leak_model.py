@@ -1,8 +1,8 @@
 """
 AquaFlow — train and evaluate leak / burst detectors on the simulated households.
 
-Data: ../simdeum/out/H01..H30 (generate with ../simdeum/generate_simdeum_households.py)
-      ../dataset/out           (original single-household generator — extra test from a
+Data: ../data/simdeum/out/H01..H30 (generate with ../data/simdeum/generate_simdeum_households.py)
+      ../data/loop_household/out (original single-household generator — extra test from a
                                 DIFFERENT simulator)
       --real readings.csv      (optional: REAL readings exported from MongoDB, plus
       --real-events events.csv  optional staged anomalies: start, end, type, label)
@@ -142,8 +142,8 @@ def md_table(rows, cols):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--data", default=str(HERE.parent / "simdeum" / "out"))
-    ap.add_argument("--extra-test", default=str(HERE.parent / "dataset" / "out"))
+    ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out"))
+    ap.add_argument("--extra-test", default=str(HERE.parent / "data" / "loop_household" / "out"))
     ap.add_argument("--real", help="REAL readings CSV exported from MongoDB (timestamp, flowRate, volume)")
     ap.add_argument("--real-events", help="staged anomalies on the real loop (start, end, type, label)")
     ap.add_argument("--fa-budget", type=float, default=0.1, help="max false alarms per day, per alarm, when tuning")

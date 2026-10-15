@@ -48,7 +48,7 @@ def spells(rng, n, rate, length):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=str(HERE.parent / "simdeum" / "out_forecast"))
+    ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out_forecast"))
     ap.add_argument("--seed", type=int, default=11)
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
