@@ -12,6 +12,7 @@ import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
 import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
 import CumulativeChart from "../../Components/SharedComponents/CumulativeChart.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
+import UsageForecast from "../../Components/UserComponents/UsageForecast.jsx";
 
 const EXPORT_DAYS = 30;
 
@@ -111,6 +112,10 @@ const Usage = () => {
                     <UsageChart daily={daily} total={week} />
                 </div>
 
+                {/* Model forecast (7 days + run-out / bill estimate); the simple estimate below is the fallback. */}
+                <UsageForecast
+                    deviceId={device._id}
+                    fallback={
                 <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center gap-2">
                         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
@@ -138,6 +143,8 @@ const Usage = () => {
                         )}
                     </p>
                 </div>
+                    }
+                />
             </div>
 
             {/* Trend + cumulative */}
