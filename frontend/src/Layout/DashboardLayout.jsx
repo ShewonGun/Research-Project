@@ -29,6 +29,7 @@ const navSections = [
         items: [
             { to: "/dashboard/devices", label: "Connections", icon: FiCpu },
             { to: "/dashboard/packages", label: "Water Packages", icon: FiPackage },
+            { to: "/dashboard/forecast", label: "Usage Forecast", icon: FiTrendingUp },
         ],
     },
     {

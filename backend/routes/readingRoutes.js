@@ -1,5 +1,5 @@
 import express from "express";
-import { ingestReading, getDeviceState, getReadings, getUsage, getNetworkUsage } from "../controllers/readingController.js";
+import { ingestReading, getDeviceState, getReadings, getFlowSeries, getUsage, getNetworkUsage } from "../controllers/readingController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -11,6 +11,7 @@ router.get("/state", getDeviceState);
 
 // Private: query telemetry.
 router.get("/", protect, getReadings);
+router.get("/series", protect, getFlowSeries);
 router.get("/network-usage", protect, authorize("admin"), getNetworkUsage);
 router.get("/usage", protect, getUsage);
 

@@ -1,9 +1,10 @@
 import express from "express";
-import { getForecast } from "../controllers/forecastController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { getForecast, getNetworkForecast } from "../controllers/forecastController.js";
+import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 router.get("/", protect, getForecast);
+router.get("/network", protect, authorize("admin"), getNetworkForecast);
 
 export default router;

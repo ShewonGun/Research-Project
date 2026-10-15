@@ -14,6 +14,7 @@ const AdminBilling = lazy(() => import('./Pages/AdminPages/Billing.jsx'))
 const ModeRequests = lazy(() => import('./Pages/AdminPages/ModeRequests.jsx'))
 const AdminAlerts = lazy(() => import('./Pages/AdminPages/Alerts.jsx'))
 const LeakAnalytics = lazy(() => import('./Pages/AdminPages/LeakAnalytics.jsx'))
+const AdminUsageForecast = lazy(() => import('./Pages/AdminPages/UsageForecast.jsx'))
 const Users = lazy(() => import('./Pages/AdminPages/Users.jsx'))
 const AdminProfile = lazy(() => import('./Pages/AdminPages/Profile.jsx'))
 
@@ -63,6 +64,7 @@ const App = () => {
             <Route path="mode-requests" element={<ModeRequests />} />
             <Route path="alerts" element={<AdminAlerts />} />
             <Route path="analytics" element={<LeakAnalytics />} />
+            <Route path="forecast" element={<AdminUsageForecast />} />
             <Route path="users" element={<Users />} />
             <Route path="profile" element={<AdminProfile />} />
           </Route>

@@ -206,6 +206,54 @@ export const getReadings = async (req, res) => {
     }
 };
 
+// Flow history for the flow chart over a chosen range, averaged into fixed time bins
+// (so a day or a week is a few dozen points, not 14,000). Empty bins are returned as 0 so the
+// time axis stays continuous — a bin with n = 0 means "no readings" (idle or device offline).
+const SERIES_RANGES = {
+    "1h": { ms: 60 * 60 * 1000, unit: "minute", bin: 1 },
+    "6h": { ms: 6 * 60 * 60 * 1000, unit: "minute", bin: 5 },
+    "24h": { ms: 24 * 60 * 60 * 1000, unit: "minute", bin: 15 },
+    "7d": { ms: 7 * 24 * 60 * 60 * 1000, unit: "hour", bin: 1 },
+};
+const BIN_MS = { minute: 60 * 1000, hour: 60 * 60 * 1000 };
+
+// @route   GET /api/readings/series?device=<id>&range=1h|6h|24h|7d
+// @access  Private
+export const getFlowSeries = async (req, res) => {
+    try {
+        const device = await canAccessDevice(req, req.query.device);
+        if (!device) return res.status(404).json({ message: "Device not found" });
+
+        const range = SERIES_RANGES[req.query.range] ? req.query.range : "24h";
+        const { ms, unit, bin } = SERIES_RANGES[range];
+        const binMs = BIN_MS[unit] * bin;
+        const end = Math.ceil(Date.now() / binMs) * binMs; // end of the current bin
+        const start = end - Math.round(ms / binMs) * binMs;
+
+        const rows = await Reading.aggregate([
+            { $match: { device: device._id, timestamp: { $gte: new Date(start), $lt: new Date(end) } } },
+            {
+                $group: {
+                    _id: { $dateTrunc: { date: "$timestamp", unit, binSize: bin } },
+                    flow: { $avg: "$flowRate" },
+                    max: { $max: "$flowRate" },
+                    litres: { $sum: "$volume" },
+                    n: { $sum: 1 },
+                },
+            },
+        ]);
+        const byTime = new Map(rows.map((r) => [r._id.getTime(), r]));
+        const points = [];
+        for (let t = start; t < end; t += binMs) {
+            const r = byTime.get(t);
+            points.push({ t, flow: r ? +r.flow.toFixed(3) : 0, max: r ? r.max : 0, litres: r ? +r.litres.toFixed(3) : 0, n: r ? r.n : 0 });
+        }
+        return res.json({ device: device._id, range, binMinutes: binMs / 60000, points });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
 // Network-wide daily usage (all devices) over the last N days
 // @route   GET /api/readings/network-usage?days=7
 // @access  Private (admin)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiLoader } from "react-icons/fi";
+import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiLoader, FiCpu } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { connectSocket } from "../../lib/socket.js";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
@@ -29,6 +29,11 @@ const statusStyles = {
     acknowledged: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
     resolved: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
 };
+const sourceFilters = [
+    { key: "all", label: "All sources" },
+    { key: "rules", label: "Rules" },
+    { key: "model", label: "AI model" },
+];
 const filters = [
     { key: "all", label: "All" },
     { key: "active", label: "Active" },
@@ -36,17 +41,26 @@ const filters = [
     { key: "resolved", label: "Resolved" },
 ];
 
+// Small tag shown on alerts raised by the ML model service (rule-based ones carry no tag).
+const SourceBadge = ({ source }) =>
+    source === "model" ? (
+        <span className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 align-middle text-[10px] font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">
+            <FiCpu className="h-3 w-3" /> AI model
+        </span>
+    ) : null;
+
 const Alerts = () => {
     const toast = useToast();
     const [alerts, setAlerts] = useState([]);
     const [filter, setFilter] = useState("all");
+    const [source, setSource] = useState("all"); // which detector raised it: rules or the AI model
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [pending, setPending] = useState(() => new Set());
     const lastLoadAt = useRef(0);
 
-    useEffect(() => setPage(1), [filter, search]);
+    useEffect(() => setPage(1), [filter, source, search]);
 
     const load = useCallback(async (silent = false) => {
         lastLoadAt.current = Date.now();
@@ -100,6 +114,7 @@ const Alerts = () => {
     const q = search.trim().toLowerCase();
     const shown = alerts
         .filter((a) => filter === "all" || a.status === filter)
+        .filter((a) => source === "all" || (a.source || "rules") === source)
         .filter((a) => !q || [a.device?.name, a.device?.deviceId, a.type].some((v) => v?.toLowerCase().includes(q)));
     const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const activeCount = alerts.filter((a) => a.status === "active").length;
@@ -142,6 +157,22 @@ const Alerts = () => {
                         </button>
                     ))}
                 </div>
+                <div className="inline-flex gap-1 rounded-sm bg-slate-100 p-1 dark:bg-slate-800/80">
+                    {sourceFilters.map((f) => (
+                        <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setSource(f.key)}
+                            className={`rounded-sm px-3 py-1 text-xs font-medium transition ${
+                                source === f.key
+                                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                            }`}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
                 <SearchInput value={search} onChange={setSearch} placeholder="Search by device, ID, or type…" className="w-full sm:w-64" />
             </div>
 
@@ -167,7 +198,7 @@ const Alerts = () => {
                                             {burst ? <FiAlertOctagon className="h-4 w-4" /> : <FiAlertTriangle className="h-4 w-4" />}
                                         </span>
                                         <div className="min-w-0">
-                                            <p className="font-medium text-slate-900 dark:text-white">{burst ? "Burst" : "Micro-leak"}</p>
+                                            <p className="font-medium text-slate-900 dark:text-white">{burst ? "Burst" : "Micro-leak"}<SourceBadge source={a.source} /></p>
                                             <p className="text-xs text-slate-400 dark:text-slate-500">{relativeTime(a.createdAt)}</p>
                                         </div>
                                     </div>
@@ -258,7 +289,7 @@ const Alerts = () => {
                                                     {burst ? <FiAlertOctagon className="h-4 w-4" /> : <FiAlertTriangle className="h-4 w-4" />}
                                                 </span>
                                                 <div className="min-w-0">
-                                                    <p className="font-medium text-slate-900 dark:text-white">{burst ? "Burst" : "Micro-leak"}</p>
+                                                    <p className="font-medium text-slate-900 dark:text-white">{burst ? "Burst" : "Micro-leak"}<SourceBadge source={a.source} /></p>
                                                     <p className="max-w-xs truncate text-xs text-slate-400 dark:text-slate-500">{a.message}</p>
                                                 </div>
                                             </div>

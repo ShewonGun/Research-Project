@@ -35,86 +35,139 @@ const dailyTotals = async (deviceObjId, days, timeZone) => {
     return Object.fromEntries(rows.map((r) => [r._id, { litres: r.litres, n: r.n }]));
 };
 
-// @route   GET /api/forecast?device=<id>&tz=Asia/Colombo
-// @access  Private (owner or admin)
-export const getForecast = async (req, res) => {
+// The forecast for one device. Returns { status, body } so the single-device and the network
+// endpoints share one implementation.
+const buildForecast = async (device, timeZone) => {
+    const base = serviceUrl();
+    if (!base) return { status: 503, body: { available: false, message: "Forecast service is not configured (set LEAK_MODEL_URL / ML_SERVICE_URL)." } };
+
+    const now = new Date();
+    const todayKey = localDayKey(now, timeZone);
+    const yesterdayKey = localDayKey(new Date(now.getTime() - DAY_MS), timeZone);
+
+    const totals = await dailyTotals(device._id, HISTORY_DAYS + 1, timeZone);
+    const usedToday = totals[todayKey]?.litres || 0;
+    // Complete days only; a day the device sent nothing is "unknown", not zero litres.
+    const history = Object.entries(totals)
+        .filter(([day, t]) => day < todayKey && t.n > 0)
+        .map(([day, t]) => ({ day, litres: +t.litres.toFixed(3) }));
+
+    let result;
     try {
-        const base = serviceUrl();
-        if (!base) return res.status(503).json({ available: false, message: "Forecast service is not configured (set LEAK_MODEL_URL / ML_SERVICE_URL)." });
+        const r = await fetch(`${base}/forecast`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lastDay: yesterdayKey, history }),
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) throw new Error(`service ${r.status}`);
+        result = await r.json();
+    } catch (err) {
+        return { status: 503, body: { available: false, message: `Forecast service unreachable (${err.message}).` } };
+    }
 
-        const device = await canAccessDevice(req, req.query.device);
-        if (!device) return res.status(404).json({ message: "Device not found" });
-
-        const timeZone = resolveTimeZone(req.query.tz || DEFAULT_TZ);
-        const now = new Date();
-        const todayKey = localDayKey(now, timeZone);
-        const yesterdayKey = localDayKey(new Date(now.getTime() - DAY_MS), timeZone);
-
-        const totals = await dailyTotals(device._id, HISTORY_DAYS + 1, timeZone);
-        const usedToday = totals[todayKey]?.litres || 0;
-        // Complete days only; a day the device sent nothing is "unknown", not zero litres.
-        const history = Object.entries(totals)
-            .filter(([day, t]) => day < todayKey && t.n > 0)
-            .map(([day, t]) => ({ day, litres: +t.litres.toFixed(3) }));
-
-        let result;
-        try {
-            const r = await fetch(`${base}/forecast`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lastDay: yesterdayKey, history }),
-                signal: AbortSignal.timeout(15000),
-            });
-            if (!r.ok) throw new Error(`service ${r.status}`);
-            result = await r.json();
-        } catch (err) {
-            return res.status(503).json({ available: false, message: `Forecast service unreachable (${err.message}).` });
-        }
-
-        if (!result.ready) {
-            return res.json({
+    if (!result.ready) {
+        return {
+            status: 200,
+            body: {
                 available: false,
                 reason: result.reason,
                 message: `Not enough usage history yet (${result.daysUsed} day(s) with data; at least 3 are needed).`,
                 daysUsed: result.daysUsed,
-            });
-        }
-
-        // forecast[0] is TODAY (the day after the last complete day).
-        const forecast = result.forecast;
-        const response = {
-            available: true,
-            device: device._id,
-            timeZone,
-            method: result.method, // "model" (>= 7 of the last 14 days have data) or "average" (fewer)
-            daysUsed: result.daysUsed,
-            usedToday: +usedToday.toFixed(2),
-            forecast,
-            billingMode: device.billingMode,
-            asOf: now,
+            },
         };
+    }
 
-        if (device.billingMode === "postpaid") {
-            const bill = await Bill.findOne({ device: device._id, status: "open" });
-            response.billEstimate = bill
-                ? buildBillEstimate({
-                      volumeUsed: bill.volumeUsed,
-                      periodStart: bill.periodStart,
-                      forecast,
-                      usedToday,
-                      now,
-                      timeZone,
-                      tariff: await getActiveTariff(),
-                      computeBill,
-                  })
-                : null;
-        } else {
-            const sub = await Subscription.findOne({ device: device._id, status: "active" });
-            response.runOut = sub
-                ? buildRunOut({ balance: sub.volumeRemaining, expiresAt: sub.expiresAt, forecast, usedToday, now, timeZone })
-                : null;
-        }
-        return res.json(response);
+    // forecast[0] is TODAY (the day after the last complete day).
+    const forecast = result.forecast;
+    const body = {
+        available: true,
+        device: device._id,
+        timeZone,
+        method: result.method, // "model" (>= 7 of the last 14 days have data) or "average" (fewer)
+        daysUsed: result.daysUsed,
+        usedToday: +usedToday.toFixed(2),
+        forecast,
+        billingMode: device.billingMode,
+        asOf: now,
+    };
+
+    if (device.billingMode === "postpaid") {
+        const bill = await Bill.findOne({ device: device._id, status: "open" });
+        body.billEstimate = bill
+            ? buildBillEstimate({
+                  volumeUsed: bill.volumeUsed,
+                  periodStart: bill.periodStart,
+                  forecast,
+                  usedToday,
+                  now,
+                  timeZone,
+                  tariff: await getActiveTariff(),
+                  computeBill,
+              })
+            : null;
+    } else {
+        const sub = await Subscription.findOne({ device: device._id, status: "active" });
+        body.runOut = sub
+            ? buildRunOut({ balance: sub.volumeRemaining, expiresAt: sub.expiresAt, forecast, usedToday, now, timeZone })
+            : null;
+    }
+    return { status: 200, body };
+};
+
+// @route   GET /api/forecast?device=<id>&tz=Asia/Colombo
+// @access  Private (owner or admin)
+export const getForecast = async (req, res) => {
+    try {
+        const device = await canAccessDevice(req, req.query.device);
+        if (!device) return res.status(404).json({ message: "Device not found" });
+        const { status, body } = await buildForecast(device, resolveTimeZone(req.query.tz || DEFAULT_TZ));
+        return res.status(status).json(body);
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// One row per device for the admin overview: expected usage over the next 7 days and the
+// run-out date (prepaid) or projected bill (postpaid). Devices with too little history are
+// listed with a message instead of being left out.
+// @route   GET /api/forecast/network?tz=Asia/Colombo
+// @access  Private (admin)
+export const getNetworkForecast = async (req, res) => {
+    try {
+        const timeZone = resolveTimeZone(req.query.tz || DEFAULT_TZ);
+        const devices = await Device.find({}).populate("owner", "name email").sort({ createdAt: 1 });
+        const rows = await Promise.all(
+            devices.map(async (device) => {
+                const info = {
+                    _id: device._id,
+                    deviceId: device.deviceId,
+                    name: device.name,
+                    owner: device.owner ? { name: device.owner.name, email: device.owner.email } : null,
+                    billingMode: device.billingMode,
+                    status: device.status,
+                };
+                try {
+                    const { body } = await buildForecast(device, timeZone);
+                    if (!body.available) return { ...info, available: false, message: body.message };
+                    const next7 = body.forecast.reduce((sum, d) => sum + d.litres, 0);
+                    return {
+                        ...info,
+                        available: true,
+                        method: body.method,
+                        daysUsed: body.daysUsed,
+                        usedToday: body.usedToday,
+                        next7Litres: +next7.toFixed(1),
+                        avgPerDay: +(next7 / body.forecast.length).toFixed(1),
+                        runOut: body.runOut ? { balanceLitres: body.runOut.balanceLitres, daysLeft: body.runOut.daysLeft, date: body.runOut.date, limitedBy: body.runOut.limitedBy } : null,
+                        bill: body.billEstimate ? { projectedLitres: body.billEstimate.projectedLitres.mid, amount: body.billEstimate.amount, daysLeftInCycle: body.billEstimate.daysLeftInCycle } : null,
+                    };
+                } catch (err) {
+                    return { ...info, available: false, message: err.message };
+                }
+            })
+        );
+        return res.json({ timeZone, count: rows.length, devices: rows });
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
     }
