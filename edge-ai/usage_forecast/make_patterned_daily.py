@@ -10,6 +10,14 @@ each simulated day's total and multiplies it by documented, ASSUMED pattern fact
   guest spells     ~1 per 3 weeks, 1-3 days, usage x 1.3                         [assumption]
   slow drift       household-specific linear trend, U(-0.10, +0.10) % per day    [assumption]
 
+With --with-weather the REAL weather and Sri Lankan holidays for those dates (calendar_features.py)
+also change usage, by ASSUMED amounts:
+  hot days         +3 % per degree of daily maximum above 29 C                    [assumption]
+  rainy days       -8 % when rainfall >= 5 mm                                     [assumption]
+  public holidays  +10 % (people at home)                                         [assumption]
+The weather and holiday dates are real; the effect sizes are made up. A model trained on this data
+learning them proves the pipeline works, not that real households respond this way.
+
 THESE ARE ASSUMPTIONS, NOT MEASUREMENTS. The ranges are in the typical order reported by
 residential water-demand studies, but check/replace them with citations you can verify before
 quoting them. Accuracy on this dataset shows the model can learn patterns of this kind; it does
@@ -17,7 +25,7 @@ not show that real households have them. Change the constants below to test othe
 
 Output: data/patterned_daily.csv  (home, day, litres, house_type, weekend_uplift) and
         data/pattern_log.csv (every spell injected, for transparency).
-Usage:  python make_patterned_daily.py [--seed 11]
+Usage:  python make_patterned_daily.py [--seed 11] [--with-weather]   (second form -> data/patterned_weather_daily.csv)
 """
 import argparse
 from pathlib import Path
@@ -26,11 +34,13 @@ import numpy as np
 import pandas as pd
 
 from train_forecast import HERE, load_daily
+import calendar_features as cf
 
 WEEKEND_UPLIFT_MAX = 0.25
 ABSENCE_PER_DAY, ABSENCE_LEN, ABSENCE_FACTOR = 1 / 28, (2, 6), 0.1
 GUEST_PER_DAY, GUEST_LEN, GUEST_FACTOR = 1 / 21, (1, 3), 1.3
 DRIFT_PER_DAY = (-0.001, 0.001)
+HOT_BASE_C, PER_DEGREE, RAIN_EFFECT, HOLIDAY_EFFECT = 29.0, 0.03, -0.08, 0.10
 
 
 def spells(rng, n, rate, length):
@@ -50,6 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out_forecast"))
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--with-weather", action="store_true", help="also apply assumed weather + holiday effects (real weather/holiday dates)")
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
     data = Path(a.data)
@@ -67,13 +78,17 @@ def main():
                 factor[s:s + length] *= f
                 log.append({"home": h, "kind": kind, "start": d.index[s].date(), "days": min(length, n - s)})
         factor *= 1 + rng.uniform(*DRIFT_PER_DAY) * np.arange(n)
+        if a.with_weather:
+            cal = cf.table_for([x.date() for x in d.index])
+            factor *= (1 + PER_DEGREE * (cal["tmax"].values - HOT_BASE_C).clip(min=-3)) * (1 + RAIN_EFFECT * cal["is_rainy"].values) * (1 + HOLIDAY_EFFECT * cal["is_holiday"].values)
         for day, base, fac in zip(d.index, d.values, factor):
             rows.append({"home": h, "day": day.date(), "litres": round(base * fac, 2),
                          "house_type": info.loc[h, "house_type"], "weekend_uplift": round(up, 3)})
     out = HERE / "data"
     out.mkdir(exist_ok=True)
-    pd.DataFrame(rows).to_csv(out / "patterned_daily.csv", index=False)
-    pd.DataFrame(log).to_csv(out / "pattern_log.csv", index=False)
+    name = "patterned_weather_daily.csv" if a.with_weather else "patterned_daily.csv"
+    pd.DataFrame(rows).to_csv(out / name, index=False)
+    pd.DataFrame(log).to_csv(out / ("pattern_log_weather.csv" if a.with_weather else "pattern_log.csv"), index=False)
     print(f"{len(rows)} household-days, {len(log)} spells -> {out}")
 
 

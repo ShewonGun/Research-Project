@@ -32,6 +32,7 @@ edge-ai/
 | Train + evaluate the leak model | `cd leak_detection && python train_leak_model.py --fa-budget 0.05 --final-features no_baseline` |
 | Generate normal-use households for forecasting | `cd data/simdeum && python generate_simdeum_households.py --start 2026-07-01 --end 2026-09-09 --micro-leaks 0 --bursts 0 --seed 7 --out out_forecast` |
 | Build the patterned dataset, train the forecast | `cd usage_forecast && python make_patterned_daily.py && python train_forecast.py --daily-csv data/patterned_daily.csv` |
+| Add weather + holidays (needs internet) | `cd usage_forecast && python make_patterned_daily.py --with-weather && python train_forecast.py --daily-csv data/patterned_weather_daily.csv --calendar` |
 | Run the service for the backend | `cd service && python -m uvicorn app:app --port 8001` |
 
 Model files (`*.joblib`) are not in git; the steps above recreate them. pySIMDEUM needs `pandas<2.2`

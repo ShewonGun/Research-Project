@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FiTrendingUp, FiClock, FiFileText, FiInfo } from "react-icons/fi";
+import { FiTrendingUp, FiClock, FiFileText, FiInfo, FiCloudRain, FiSun, FiCalendar } from "react-icons/fi";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ErrorBar, ResponsiveContainer } from "recharts";
 import { apiFetch } from "../../lib/api.js";
 import { browserTimeZone } from "../../lib/dayKey.js";
@@ -38,7 +38,7 @@ const UsageForecast = ({ deviceId, fallback }) => {
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Forecast</p>
                 {data?.available && (
                     <span className="ml-auto rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {data.method === "model" ? "AI model" : "Average"}
+                        {data.method === "model" ? (data.usedCalendar ? "AI model + weather" : "AI model") : "Average"}
                     </span>
                 )}
             </div>
@@ -66,7 +66,20 @@ const UsageForecast = ({ deviceId, fallback }) => {
         err: [Math.max(0, f.litres - f.low), Math.max(0, f.high - f.litres)],
         low: f.low,
         high: f.high,
+        tmax: f.tmax,
+        rainMm: f.rainMm,
+        holiday: f.holiday,
     }));
+    // Days worth pointing out: public holidays, heavy rain, very hot days.
+    const notable = data.forecast
+        .map((f, i) => ({ f, i }))
+        .filter(({ f }) => f.holiday || f.rainMm >= 10 || f.tmax >= 32)
+        .map(({ f, i }) => {
+            const day = i === 0 ? "Today" : dayLabel(f.day);
+            if (f.holiday) return { key: f.day, Icon: FiCalendar, text: `${day}: ${f.holiday}` };
+            if (f.rainMm >= 10) return { key: f.day, Icon: FiCloudRain, text: `${day}: rain ~${Math.round(f.rainMm)} mm` };
+            return { key: f.day, Icon: FiSun, text: `${day}: hot, ${Math.round(f.tmax)}°C` };
+        });
     const weekTotal = data.forecast.reduce((s, f) => s + f.litres, 0);
 
     const runOut = data.runOut;
@@ -84,7 +97,12 @@ const UsageForecast = ({ deviceId, fallback }) => {
                     <YAxis hide domain={[0, "auto"]} />
                     <Tooltip
                         cursor={{ fill: t.grid }}
-                        formatter={(v, _n, p) => [`${Number(v).toFixed(0)} L (range ${p.payload.low.toFixed(0)}–${p.payload.high.toFixed(0)})`, "Forecast"]}
+                        formatter={(v, _n, p) => [
+                            `${Number(v).toFixed(0)} L (range ${p.payload.low.toFixed(0)}–${p.payload.high.toFixed(0)})${
+                                p.payload.tmax != null ? ` · ${Math.round(p.payload.tmax)}°C, ${p.payload.rainMm.toFixed(0)} mm rain` : ""
+                            }${p.payload.holiday ? ` · ${p.payload.holiday}` : ""}`,
+                            "Forecast",
+                        ]}
                         {...t.tooltip}
                     />
                     <Bar dataKey="litres" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={28}>
@@ -92,6 +110,16 @@ const UsageForecast = ({ deviceId, fallback }) => {
                     </Bar>
                 </BarChart>
             </ResponsiveContainer>
+
+            {notable.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    {notable.map(({ key, Icon, text }) => (
+                        <span key={key} className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                            <Icon className="h-3 w-3" /> {text}
+                        </span>
+                    ))}
+                </div>
+            )}
 
             {data.billingMode === "postpaid" ? (
                 bill ? (
@@ -128,6 +156,13 @@ const UsageForecast = ({ deviceId, fallback }) => {
                 </div>
             ) : (
                 <p className="mt-4 text-sm text-slate-500">Buy a plan to see how long your water balance will last.</p>
+            )}
+
+            {data.usedCalendar && (
+                <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+                    <FiInfo className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Takes the weather forecast and public holidays into account. Weather data is approximate, especially rainfall beyond a few days.
+                </p>
             )}
 
             {data.method === "average" && (

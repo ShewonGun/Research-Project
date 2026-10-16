@@ -85,6 +85,7 @@ const buildForecast = async (device, timeZone) => {
         device: device._id,
         timeZone,
         method: result.method, // "model" (>= 7 of the last 14 days have data) or "average" (fewer)
+        usedCalendar: !!result.usedCalendar, // true when weather + public holidays fed the forecast numbers
         daysUsed: result.daysUsed,
         usedToday: +usedToday.toFixed(2),
         forecast,

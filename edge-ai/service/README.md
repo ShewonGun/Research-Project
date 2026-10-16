@@ -23,5 +23,16 @@ data/patterned_daily.csv` creates it; not in git). With 7+ of the last 14 days p
 (offline days are filled with the household's median); with 3-6 it falls back to the plain average;
 fewer than 3 days -> no forecast. Restart the service after pulling to enable it.
 
+**Weather and holidays.** Each forecast also uses the target days' weather (Open-Meteo: max temperature, rainfall)
+and Sri Lankan public holidays (`holidays` package + `usage_forecast/data/holidays_override.csv` for gazette
+corrections). The service refreshes its weather cache every 3 hours in the background and never waits on the
+network during a request; with no weather it quietly uses the model without calendar inputs. Needs
+`../usage_forecast/results_weather/forecast_model_calendar.joblib`
+(`python ../usage_forecast/train_forecast.py --daily-csv data/patterned_weather_daily.csv --calendar`).
+**The calendar model's reaction to heat / rain / holidays was learned from ASSUMED effect sizes** (the simulated
+households don't respond to weather), so retrain it on real usage history before trusting those adjustments;
+set `FORECAST_USE_CALENDAR=0` to ignore weather and holidays in the forecast numbers. Location:
+`FORECAST_LAT` / `FORECAST_LON` (default Colombo).
+
 The backend adds, by billing mode, a prepaid run-out date (balance vs forecast, capped by plan expiry) or a
 postpaid bill estimate (open cycle so far + forecast to a 30-day cycle end, priced with the active tariff).

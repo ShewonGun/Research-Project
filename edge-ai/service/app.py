@@ -16,6 +16,9 @@ MAX_LPM before scoring.
 Run (from edge-ai/service):  uvicorn app:app --port 8001
 Env: LEAK_MODEL_PATH     (default ../leak_detection/results/leak_model.joblib)
      FORECAST_MODEL_PATH (default ../usage_forecast/results_patterned/forecast_model.joblib)
+     FORECAST_CAL_MODEL_PATH (default ../usage_forecast/results_weather/forecast_model_calendar.joblib)
+     FORECAST_USE_CALENDAR  (default 1; 0 = ignore weather/holidays in the forecast numbers)
+     FORECAST_LAT / FORECAST_LON (default Colombo)
 """
 import os
 import sys
@@ -42,7 +45,12 @@ app = FastAPI(title="AquaFlow leak + usage model")
 
 # ── Usage forecast ───────────────────────────────────────────────────────────
 sys.path.insert(0, str(HERE.parent / "usage_forecast"))
+import threading  # noqa: E402
+import time  # noqa: E402
+from datetime import date, timedelta  # noqa: E402
+
 import numpy as np  # noqa: E402
+import calendar_features as cf  # noqa: E402
 import train_forecast as tf  # noqa: E402
 
 FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "usage_forecast" / "results_patterned" / "forecast_model.joblib"))
@@ -50,6 +58,26 @@ try:
     forecast_saved = joblib.load(FORECAST_PATH)
 except Exception:        # no forecast model on this machine -> simple-average fallback only
     forecast_saved = None
+CAL_PATH = os.environ.get("FORECAST_CAL_MODEL_PATH", str(HERE.parent / "usage_forecast" / "results_weather" / "forecast_model_calendar.joblib"))
+try:
+    calendar_saved = joblib.load(CAL_PATH)
+except Exception:
+    calendar_saved = None
+USE_CALENDAR = os.environ.get("FORECAST_USE_CALENDAR", "1") != "0"
+
+
+def _refresh_weather_forever():
+    """Keep the weather cache fresh: the last few days plus the coming week, every 3 hours."""
+    while True:
+        try:
+            today = date.today()
+            cf.refresh(today - timedelta(days=14), today + timedelta(days=8))
+        except Exception:
+            pass                      # offline: the cache keeps the last values
+        time.sleep(3 * 3600)
+
+
+threading.Thread(target=_refresh_weather_forever, daemon=True).start()
 MIN_KNOWN_MODEL = 7      # of the last 14 days, at least this many must have data to use the model
 MIN_KNOWN_AVERAGE = 3    # below this there is nothing sensible to forecast from
 
@@ -67,7 +95,8 @@ class ScoreRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": saved["model_type"], "alarms": saved["alarms"], "forecast_model": forecast_saved is not None}
+    return {"ok": True, "model": saved["model_type"], "alarms": saved["alarms"], "forecast_model": forecast_saved is not None,
+            "calendar_model": calendar_saved is not None and USE_CALENDAR}
 
 
 @app.post("/score")
@@ -117,19 +146,34 @@ def forecast(req: ForecastRequest):
     if n_known < MIN_KNOWN_AVERAGE:
         return {"ready": False, "reason": "not enough history", "daysUsed": n_known}
     targets = [last + pd.Timedelta(days=h) for h in tf.HORIZONS]
+    try:
+        cal = cf.features_for([t.date() for t in targets], refresh_if_missing=False)   # from the cache; never blocks on the network
+    except Exception:
+        cal = None
+    context = None if cal is None else [{"tmax": c["tmax"], "rainMm": c["rain_mm"], "holiday": c["holiday"]} for c in cal]
+
+    def with_context(items):
+        if context:
+            for it, c in zip(items, context):
+                it.update(c)
+        return items
+
     vals = np.array(list(known.values()))
     if forecast_saved is None or n_known < MIN_KNOWN_MODEL:
         mean = float(vals.mean())
         out = [{"day": t.date().isoformat(), "litres": round(mean, 1), "low": round(mean * 0.5, 1), "high": round(mean * 1.5, 1)} for t in targets]
-        return {"ready": True, "method": "average", "daysUsed": n_known, "forecast": out}
+        return {"ready": True, "method": "average", "daysUsed": n_known, "usedCalendar": False, "forecast": with_context(out)}
+    use_cal = USE_CALENDAR and calendar_saved is not None and cal is not None
+    chosen = calendar_saved if use_cal else forecast_saved
     fill = float(np.median(vals))                       # offline days -> the household's usual day
     hist = np.array([known.get(d, fill) for d in window])[::-1]   # hist[0] = newest day
     out = []
-    for h, t in zip(tf.HORIZONS, targets):
-        feat, scale = tf.features_at(hist, t, h)
-        x = pd.DataFrame([feat])[forecast_saved["features"]]
-        pred = float(forecast_saved["model"].predict(x)[0]) * scale
-        hw = forecast_saved["range_halfwidth_80"][h]
+    for i, (h, t) in enumerate(zip(tf.HORIZONS, targets)):
+        feat, scale = tf.features_at(hist, t, h, cal[i] if use_cal else None)
+        x = pd.DataFrame([feat])[chosen["features"]]
+        pred = float(chosen["model"].predict(x)[0]) * scale
+        hw = chosen["range_halfwidth_80"][h]
         out.append({"day": t.date().isoformat(), "litres": round(max(pred, 0), 1),
                     "low": round(max(pred - hw, 0), 1), "high": round(pred + hw, 1)})
-    return {"ready": True, "method": "model", "daysUsed": n_known, "imputedDays": tf.LAGS - n_known, "forecast": out}
+    return {"ready": True, "method": "model", "daysUsed": n_known, "imputedDays": tf.LAGS - n_known,
+            "usedCalendar": use_cal, "forecast": with_context(out)}

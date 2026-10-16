@@ -8,21 +8,27 @@ Data (either):
     The simulator redraws each day independently: no weekly pattern, no day-to-day memory.
   * --daily-csv data/patterned_daily.csv — the same households with ASSUMED patterns added
     (weekend uplift, absence/guest spells, drift); see make_patterned_daily.py.
+  * --daily-csv data/patterned_weather_daily.csv --calendar — the same plus ASSUMED reactions to the
+    REAL weather and public holidays of those dates (hot, rainy, holiday), to show the pipeline learns them.
 
 Task: at the end of day d, predict litres used on days d+1 ... d+7 from the household's own
 past daily totals only (no house type / people count — a real device doesn't know them).
 Features are relative to the household's recent median, so one model serves any household size.
+With --calendar the target day's weather (max temperature, rain) and holiday flags (calendar_features.py)
+are extra inputs; the script then compares the model with and without them.
 
 Compared on households the model never saw (6-fold CV by household; test = each held-out
 household's last 21 days of forecast origins):
   baseline_week   same weekday last week
   baseline_mean7  mean of the last 7 days
   gbm             gradient boosting on relative lag features, one model for all horizons
-The 80 % range is gbm +/- the 80th percentile of |error| at that horizon, measured on the OTHER
+  gbm_cal         the same plus weather / holiday inputs (--calendar)
+The 80 % range is the model +/- the 80th percentile of |error| at that horizon, measured on the OTHER
 folds (so the reported coverage is honest).
 
-Usage:  python train_forecast.py                                   -> results/
-        python train_forecast.py --daily-csv data/patterned_daily.csv  -> results_patterned/
+Usage:  python train_forecast.py                                          -> results/
+        python train_forecast.py --daily-csv data/patterned_daily.csv      -> results_patterned/
+        python train_forecast.py --daily-csv data/patterned_weather_daily.csv --calendar -> results_weather/
 """
 import argparse
 import json
@@ -33,12 +39,16 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
+import calendar_features as cf
+
 HERE = Path(__file__).resolve().parent
 LOCAL_TZ = "Asia/Colombo"
 HORIZONS = range(1, 8)
 LAGS = 14                 # days of history used
 MIN_HISTORY = LAGS        # origins need this many past days
 TEST_DAYS = 21
+CAL_FEATURES = cf.CALENDAR_COLUMNS      # tmax, rain_mm, is_rainy, is_holiday, near_holiday
+NON_FEATURES = ("origin", "scale", "target", "target_ratio", "baseline_week", "baseline_mean7", "home")
 
 
 def load_daily(folder):
@@ -50,9 +60,10 @@ def load_daily(folder):
     return d[cnt >= 1380].rename_axis("day")           # drop partial first/last days
 
 
-def features_at(hist, target_day, h):
+def features_at(hist, target_day, h, cal=None):
     """Features for predicting `target_day` (h days after the origin) from `hist`
-    (hist[0] = origin day, hist[k] = k days earlier). Everything is relative to the recent median."""
+    (hist[0] = origin day, hist[k] = k days earlier). Everything is relative to the recent median.
+    `cal` (optional): dict with the CAL_FEATURES of the target day."""
     scale = max(float(np.median(hist)), 1.0)
     tdow = target_day.dayofweek
     r = hist / scale
@@ -63,11 +74,14 @@ def features_at(hist, target_day, h):
         "min3": r[:3].min(), "last_week_same_day": r[7 - h],   # the day 7 days before the target
         **{f"lag{k}": r[k] for k in range(len(hist))},
     }
+    if cal is not None:
+        feat.update({c: float(cal[c]) for c in CAL_FEATURES})
     return feat, scale
 
 
-def make_rows(daily):
-    """One row per (origin day, horizon): features known at the origin + the target."""
+def make_rows(daily, cal=None):
+    """One row per (origin day, horizon): features known at the origin + the target.
+    `cal`: optional DataFrame indexed by ISO date string with CAL_FEATURES."""
     v = daily.values
     days = daily.index
     rows = []
@@ -76,7 +90,8 @@ def make_rows(daily):
         for h in HORIZONS:
             if i + h >= len(v):
                 continue
-            feat, scale = features_at(hist, days[i + h], h)
+            c = None if cal is None else cal.loc[days[i + h].date().isoformat()]
+            feat, scale = features_at(hist, days[i + h], h, c)
             rows.append({"origin": days[i], "scale": scale, "target": v[i + h], "target_ratio": v[i + h] / scale,
                          "baseline_week": hist[7 - h], "baseline_mean7": hist[:7].mean(), **feat})
     return pd.DataFrame(rows)
@@ -87,75 +102,106 @@ def metrics(df, col):
     return {"mae": e.mean(), "mape": (e / df["target"].clip(lower=1)).mean() * 100}
 
 
+def new_model():
+    return HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_leaf_nodes=15, random_state=0)
+
+
+def cross_validate(R, feats, folds, cutoff, col):
+    """Fill R[col] with out-of-fold predictions (litres) for the test rows; return the fold id per row."""
+    R[col] = np.nan
+    fold = pd.Series(-1, index=R.index)
+    for k, test_h in enumerate(folds):
+        te = R["home"].isin(test_h) & (R["origin"] > cutoff)
+        tr = ~R["home"].isin(test_h)
+        m = new_model().fit(R.loc[tr, feats], R.loc[tr, "target_ratio"])
+        R.loc[te, col] = m.predict(R.loc[te, feats]) * R.loc[te, "scale"]
+        fold[te] = k
+    return fold
+
+
+def honest_range(T, col, n_folds):
+    """80 % range per row from the OTHER folds' errors; also the half-widths for the final model."""
+    lo, hi = pd.Series(np.nan, index=T.index), pd.Series(np.nan, index=T.index)
+    for k in range(n_folds):
+        for h in HORIZONS:
+            other = T[(T.fold != k) & (T.h == h)]
+            q = (other[col] - other["target"]).abs().quantile(0.8)
+            sel = (T.fold == k) & (T.h == h)
+            lo[sel] = (T.loc[sel, col] - q).clip(lower=0)
+            hi[sel] = T.loc[sel, col] + q
+    half = {int(h): float((T[T.h == h][col] - T[T.h == h]["target"]).abs().quantile(0.8)) for h in HORIZONS}
+    return lo, hi, half
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out_forecast"))
     ap.add_argument("--daily-csv", help="daily-litres CSV (home, day, litres, house_type) instead of the minute files")
-    ap.add_argument("--out", default=None, help="default results/ (results_patterned/ with --daily-csv)")
+    ap.add_argument("--calendar", action="store_true", help="add real weather + holiday inputs and compare with / without them")
+    ap.add_argument("--out", default=None, help="default results/ (results_patterned/ with --daily-csv, results_weather/ with --calendar)")
     a = ap.parse_args()
-    out = Path(a.out or HERE / ("results_patterned" if a.daily_csv else "results"))
+    default_out = "results_weather" if a.calendar else ("results_patterned" if a.daily_csv else "results")
+    out = Path(a.out or HERE / default_out)
     out.mkdir(exist_ok=True, parents=True)
 
-    rows = []
+    series = {}
     if a.daily_csv:
         dd = pd.read_csv(a.daily_csv, parse_dates=["day"])
         homes = sorted(dd["home"].unique())
         info = dd.drop_duplicates("home").set_index("home")[["house_type"]]
         for h in homes:
-            r = make_rows(dd[dd.home == h].set_index("day")["litres"])
-            r["home"] = h
-            rows.append(r)
+            series[h] = dd[dd.home == h].set_index("day")["litres"]
     else:
         homes = sorted(p.name for p in Path(a.data).iterdir() if (p / "1min.csv").exists())
-        info = pd.read_csv(Path(a.data) / "households.csv").set_index("household_id").rename(columns={"house_type": "house_type"})
+        info = pd.read_csv(Path(a.data) / "households.csv").set_index("household_id")
         for h in homes:
-            r = make_rows(load_daily(Path(a.data) / h))
-            r["home"] = h
-            rows.append(r)
+            series[h] = load_daily(Path(a.data) / h)
+
+    cal = None
+    if a.calendar:
+        all_days = sorted({d.date() for s in series.values() for d in s.index})
+        cal = cf.table_for(all_days)
+        print(f"calendar inputs for {len(all_days)} days: {int(cal.is_holiday.sum())} holidays, {int(cal.is_rainy.sum())} rainy days, "
+              f"max temp {cal.tmax.min():.1f}-{cal.tmax.max():.1f} C")
+
+    rows = []
+    for h in homes:
+        r = make_rows(series[h], cal)
+        r["home"] = h
+        rows.append(r)
     R = pd.concat(rows, ignore_index=True)
-    feats = [c for c in R.columns if c not in ("origin", "scale", "target", "target_ratio", "baseline_week", "baseline_mean7", "home")]
-    print(f"{len(homes)} households, {len(R):,} (origin, horizon) rows, {len(feats)} features")
+    feats_cal = [c for c in R.columns if c not in NON_FEATURES]
+    feats = [c for c in feats_cal if c not in CAL_FEATURES]
+    print(f"{len(homes)} households, {len(R):,} (origin, horizon) rows, {len(feats)} features" + (f" (+{len(CAL_FEATURES)} calendar)" if a.calendar else ""))
 
     # 6-fold CV by household; test = last TEST_DAYS days of origins of the held-out homes.
     folds = [homes[i::6] for i in range(6)]
-    R["gbm"] = np.nan
-    R["fold"] = -1
     cutoff = R.groupby("home")["origin"].transform("max") - pd.Timedelta(days=TEST_DAYS)
-    for k, test_h in enumerate(folds):
-        te = R["home"].isin(test_h) & (R["origin"] > cutoff)
-        tr = ~R["home"].isin(test_h)
-        m = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_leaf_nodes=15, random_state=0)
-        m.fit(R.loc[tr, feats], R.loc[tr, "target_ratio"])
-        R.loc[te, "gbm"] = m.predict(R.loc[te, feats]) * R.loc[te, "scale"]
-        R.loc[te, "fold"] = k
+    R["fold"] = cross_validate(R, feats, folds, cutoff, "gbm")
+    models = ["gbm"]
+    if a.calendar:
+        cross_validate(R, feats_cal, folds, cutoff, "gbm_cal")
+        models.append("gbm_cal")
     T = R.dropna(subset=["gbm"]).copy()
+    ranges = {}
+    for m in models:
+        T[f"lo_{m}"], T[f"hi_{m}"], ranges[m] = honest_range(T, m, len(folds))
+    T["lo"], T["hi"] = T["lo_gbm"], T["hi_gbm"]
 
-    T["lo"] = np.nan
-    T["hi"] = np.nan
-    for k in range(len(folds)):
-        for h in HORIZONS:
-            other = T[(T.fold != k) & (T.h == h)]
-            q = (other["gbm"] - other["target"]).abs().quantile(0.8)
-            sel = (T.fold == k) & (T.h == h)
-            T.loc[sel, "lo"] = (T.loc[sel, "gbm"] - q).clip(lower=0)
-            T.loc[sel, "hi"] = T.loc[sel, "gbm"] + q
-    q_final = {int(h): float((T[T.h == h]["gbm"] - T[T.h == h]["target"]).abs().quantile(0.8)) for h in HORIZONS}
-
-    table = []
-    for name in ("baseline_week", "baseline_mean7", "gbm"):
-        table.append({"model": name, **{f"h{h}_mae": metrics(T[T.h == h], name)["mae"] for h in HORIZONS}, **metrics(T, name)})
+    names = ["baseline_week", "baseline_mean7"] + models
+    table = [{"model": n, **{f"h{h}_mae": metrics(T[T.h == h], n)["mae"] for h in HORIZONS}, **metrics(T, n)} for n in names]
     res = pd.DataFrame(table).set_index("model").round(2)
     res.to_csv(out / "forecast_metrics.csv")
-    cover = ((T["target"] >= T["lo"]) & (T["target"] <= T["hi"])).mean()
+    cover = {m: float(((T["target"] >= T[f"lo_{m}"]) & (T["target"] <= T[f"hi_{m}"])).mean()) for m in models}
     print(res.to_string())
-    print(f"\n80% range coverage: {cover:.0%}")
+    print("\n80% range coverage: " + ", ".join(f"{m} {c:.0%}" for m, c in cover.items()))
 
     # Totals over the next n days (what the run-out date and the bill estimate use).
     tot = []
     for n in (3, 7):
         sub = T[T.h <= n].groupby(["home", "origin"]).filter(lambda x, n=n: len(x) == n)
-        agg = sub.groupby(["home", "origin"])[["target", "baseline_week", "baseline_mean7", "gbm"]].sum()
-        for name in ("baseline_week", "baseline_mean7", "gbm"):
+        agg = sub.groupby(["home", "origin"])[["target"] + names].sum()
+        for name in names:
             err = (agg[name] - agg["target"]).abs()
             tot.append({"next_days": n, "model": name, "mae_litres": round(err.mean(), 1),
                         "mape_pct": round((err / agg["target"].clip(lower=1)).mean() * 100, 1)})
@@ -168,14 +214,27 @@ def main():
     by_type["baseline_mean7_mae"] = [round(metrics(g, "baseline_mean7")["mae"], 2) for _, g in T.groupby("type")]
     print("\nBy house type (gbm):\n" + by_type.to_string())
 
-    # Final model on all households
-    final = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_leaf_nodes=15, random_state=0)
-    final.fit(R[feats], R["target_ratio"])
-    joblib.dump({"model": final, "features": feats, "lags": LAGS, "range_halfwidth_80": q_final}, out / "forecast_model.joblib")
-    T[["home", "origin", "h", "target", "baseline_week", "baseline_mean7", "gbm", "lo", "hi"]].to_csv(out / "forecast_test_predictions.csv", index=False)
-    (out / "summary.json").write_text(json.dumps({"households": len(homes), "test_rows": int(len(T)), "coverage_80": round(float(cover), 3),
-                                                  "metrics": res.reset_index().to_dict("records"),
-                                                  "totals": tot.to_dict("records")}, indent=2, default=float))
+    # Final models on all households
+    final = new_model().fit(R[feats], R["target_ratio"])
+    joblib.dump({"model": final, "features": feats, "lags": LAGS, "uses_calendar": False, "range_halfwidth_80": ranges["gbm"]},
+                out / "forecast_model.joblib")
+    importance = None
+    if a.calendar:
+        final_cal = new_model().fit(R[feats_cal], R["target_ratio"])
+        joblib.dump({"model": final_cal, "features": feats_cal, "lags": LAGS, "uses_calendar": True,
+                     "range_halfwidth_80": ranges["gbm_cal"]}, out / "forecast_model_calendar.joblib")
+        # How much does each calendar input matter? (increase in error when shuffled, on the test rows)
+        from sklearn.inspection import permutation_importance
+        te = R.dropna(subset=["gbm_cal"]).sample(min(3000, int(R["gbm_cal"].notna().sum())), random_state=0)
+        pi = permutation_importance(final_cal, te[feats_cal], te["target_ratio"], n_repeats=5, random_state=0, scoring="neg_mean_absolute_error")
+        importance = pd.Series(pi.importances_mean, index=feats_cal).sort_values(ascending=False)
+        importance.to_csv(out / "feature_importance.csv", header=["importance"])
+        print("\nTop inputs (permutation importance):\n" + importance.head(8).round(4).to_string())
+
+    keep = ["home", "origin", "h", "target", "baseline_week", "baseline_mean7"] + models + ["lo", "hi"]
+    T[keep].to_csv(out / "forecast_test_predictions.csv", index=False)
+    (out / "summary.json").write_text(json.dumps({"households": len(homes), "test_rows": int(len(T)), "coverage_80": {k: round(v, 3) for k, v in cover.items()},
+                                                  "metrics": res.reset_index().to_dict("records"), "totals": tot.to_dict("records")}, indent=2, default=float))
     print(f"\nSaved -> {out}")
 
 

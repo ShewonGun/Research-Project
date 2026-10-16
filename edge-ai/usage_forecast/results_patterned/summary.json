@@ -1,7 +1,9 @@
 {
   "households": 30,
   "test_rows": 3780,
-  "coverage_80": 0.797,
+  "coverage_80": {
+    "gbm": 0.797
+  },
   "metrics": [
     {
       "model": "baseline_week",
