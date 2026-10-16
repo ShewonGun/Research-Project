@@ -10,7 +10,12 @@ Backend: set `LEAK_MODEL_URL=http://localhost:8001` in `backend/.env` and restar
 minute the backend sends each online device's last 12 h of readings to `POST /score` and
 raises / clears alerts (`source: "model"`) from the verdict. Unset = feature off.
 
-* Alert only — the model never closes the valve; the 30 L/min rule keeps that job.
+* Alert only by default. **Opt-in shut-off:** add `MODEL_AUTO_SHUTOFF=true` to `backend/.env` (and restart the
+  backend) and a confident burst verdict also closes the provider valve. It needs the burst alarm active (flow
+  non-stop for ~20 min), a score of at least `MODEL_SHUTOFF_MIN_SCORE` (default 0.7) and the pump still running
+  now (latest reading >= 2 L/min and under 2 minutes old). Such an alert is never auto-resolved: someone must mark
+  the leak fixed, after which the supply can be restored (the existing safety lock applies). Without the setting
+  the 30 L/min rule is the only automatic shut-off, and it cannot fire on the loop's ~3.5 L/min pump.
 * Trained at AquaFlow-loop scale (pump ≈ 3.5 L/min); flows are clamped to 6 L/min.
 * Validated on simulated data only (see `../leak_detection/results/REPORT.md`).
 
