@@ -2,13 +2,14 @@
  * Write several days of realistic SAMPLE history for a device, from a generated readings CSV,
  * so the usage forecast (and the Usage page) can be checked without waiting weeks.
  *
- *   node simulation/seedHistory.js <readings.csv> [--device ESP32-A1] [--until 2026-10-15T13:00:00+05:30] [--dry-run]
+ *   node simulation/seedHistory.js <readings.csv> [--device ESP32-A1] [--until 2026-10-15T13:00:00+05:30] [--after <ISO time>] [--dry-run]
  *
  * The CSV comes from the loop-calibrated household generator (same columns as the database):
  *   python edge-ai/data/loop_household/generate_dataset.py --no-anomalies --start 2026-10-02 --end 2026-10-15 \
  *          --seed 20261015 --out edge-ai/data/loop_household/out_a1
  *
  * - Only rows up to --until are written (nothing after it, and never "now" unless you say so).
+ *   --after <ISO time> skips rows at or before that moment, to continue where an earlier run stopped.
  * - Rows are tagged `synthetic: true`. NOTHING is deleted, by this script or when it ends. Existing
  *   (real) readings on those days are left exactly as they are; sample rows are simply added.
  * - Written straight into the readings collection: billing, quota and the valve are NOT touched.
@@ -28,6 +29,7 @@ const csvPath = args[0];
 const opt = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d);
 const deviceId = opt("--device", "ESP32-A1");
 const until = new Date(opt("--until", ""));
+const after = opt("--after", null) ? new Date(opt("--after")) : null;
 const dryRun = args.includes("--dry-run");
 
 if (!csvPath || csvPath.startsWith("--") || Number.isNaN(until.getTime())) {
@@ -50,7 +52,7 @@ for await (const line of rl) {
     }
     const c = line.split(",");
     const ts = new Date(c[0]);
-    if (ts > until) continue;
+    if (ts > until || (after && ts <= after)) continue;
     rows.push({ timestamp: ts, flowRate: +c[2], volume: +c[3] });
 }
 if (!rows.length) {
