@@ -19,14 +19,14 @@ const DEFAULT_TZ = "Asia/Colombo"; // the model was trained on Sri Lanka local d
 const serviceUrl = () => process.env.ML_SERVICE_URL || process.env.LEAK_MODEL_URL;
 
 // Confirm the requesting user owns the device (admins bypass).
-const canAccessDevice = async (req, deviceId) => {
+export const canAccessDevice = async (req, deviceId) => {
     if (!mongoose.isValidObjectId(deviceId)) return null;
     const filter = req.user.role === "admin" ? { _id: deviceId } : { _id: deviceId, owner: req.user._id };
     return Device.findOne(filter);
 };
 
 // Litres and reading counts per LOCAL day over the last `days` days (today included).
-const dailyTotals = async (deviceObjId, days, timeZone) => {
+export const dailyTotals = async (deviceObjId, days, timeZone) => {
     const since = new Date(Date.now() - (days + 2) * DAY_MS);
     const rows = await Reading.aggregate([
         { $match: { device: deviceObjId, timestamp: { $gte: since } } },
@@ -37,7 +37,7 @@ const dailyTotals = async (deviceObjId, days, timeZone) => {
 
 // The forecast for one device. Returns { status, body } so the single-device and the network
 // endpoints share one implementation.
-const buildForecast = async (device, timeZone) => {
+export const buildForecast = async (device, timeZone) => {
     const base = serviceUrl();
     if (!base) return { status: 503, body: { available: false, message: "Forecast service is not configured (set LEAK_MODEL_URL / ML_SERVICE_URL)." } };
 
@@ -116,13 +116,27 @@ const buildForecast = async (device, timeZone) => {
     return { status: 200, body };
 };
 
+// The Usage page asks for the forecast and the goal card in the same moment, and both need it.
+// Share one computation per device for a minute (and join a request already in flight).
+const CACHE_MS = 60 * 1000;
+const forecastCache = new Map();
+export const forecastCached = (device, timeZone) => {
+    const key = `${device._id}|${timeZone}`;
+    const hit = forecastCache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
+    const promise = buildForecast(device, timeZone);
+    forecastCache.set(key, { at: Date.now(), promise });
+    promise.catch(() => forecastCache.delete(key)); // never cache a failure
+    return promise;
+};
+
 // @route   GET /api/forecast?device=<id>&tz=Asia/Colombo
 // @access  Private (owner or admin)
 export const getForecast = async (req, res) => {
     try {
         const device = await canAccessDevice(req, req.query.device);
         if (!device) return res.status(404).json({ message: "Device not found" });
-        const { status, body } = await buildForecast(device, resolveTimeZone(req.query.tz || DEFAULT_TZ));
+        const { status, body } = await forecastCached(device, resolveTimeZone(req.query.tz || DEFAULT_TZ));
         return res.status(status).json(body);
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });

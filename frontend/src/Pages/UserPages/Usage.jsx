@@ -13,6 +13,7 @@ import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
 import CumulativeChart from "../../Components/SharedComponents/CumulativeChart.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import UsageForecast from "../../Components/UserComponents/UsageForecast.jsx";
+import GoalCard from "../../Components/UserComponents/GoalCard.jsx";
 
 const EXPORT_DAYS = 30;
 
@@ -145,6 +146,11 @@ const Usage = () => {
                 </div>
                     }
                 />
+            </div>
+
+            {/* Daily goal + tips */}
+            <div className="mt-3 sm:mt-4">
+                <GoalCard deviceId={device._id} />
             </div>
 
             {/* Trend + cumulative */}
