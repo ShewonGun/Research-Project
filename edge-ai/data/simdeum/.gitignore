@@ -1,3 +1,4 @@
 # Generated data (~130 MB for 30 households); regenerate with generate_simdeum_households.py
 out/
 out_forecast/
+out_calibrated/
