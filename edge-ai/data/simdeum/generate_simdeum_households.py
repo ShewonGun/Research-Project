@@ -46,8 +46,17 @@ Setup (pySIMDEUM 1.0.1 needs an older pandas; use a separate environment):
   python3.11 -m venv simdeum-env
   simdeum-env/bin/pip install -r requirements.txt          (Windows: simdeum-env\\Scripts\\pip)
 
+Calibration to real NWSDB usage (optional, --calibrate-to):
+  Real Sri Lankan households (106 NWSDB bills, ../nwsdb) use far more than SIMDEUM's Dutch defaults
+  (median ~593 vs ~259 L/day). With --calibrate-to, each household keeps its SIMDEUM people, fixtures
+  and daily timing, but uses water MORE OFTEN (or less): extra independently simulated days of the
+  same household are overlaid until its litres/day reaches the real value at the same rank
+  (lightest simulated household -> lightest real quantile, etc.). Flow rates are unchanged. Needs the
+  households.csv of an uncalibrated run with the same seed (--base).
+
 Usage:
   python generate_simdeum_households.py                          # 30 households, 1–21 Oct 2026
+  python generate_simdeum_households.py --calibrate-to ../nwsdb/nwsdb_households.csv --out out_calibrated
   python generate_simdeum_households.py --households 5 --seed 7
   python generate_simdeum_households.py --start 2026-10-01 --end 2026-10-07 --households 50
 """
@@ -120,8 +129,38 @@ def simulate_day(house, stats, weekend):
     return c.transpose("enduse", "time").values[:, :DAY_S] * 60, list(c.coords["enduse"].values)
 
 
-def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, seed, out_dir, night_shift=False):
+def thin(per_fixture, keep_prob, rng):
+    """Keep each continuous use of each fixture with probability keep_prob (drop the rest)."""
+    out = per_fixture.copy()
+    for i in range(out.shape[0]):
+        ed = np.flatnonzero(np.diff(np.r_[0, (out[i] > 0).astype(np.int8), 0]))
+        for s, e in zip(ed[::2], ed[1::2]):
+            if rng.random() >= keep_prob:
+                out[i, s:e] = 0.0
+    return out
+
+
+def calibrated_targets(base_csv, real_csv, n_households, min_usable_months=12):
+    """Usage multiplier per household so the simulated households' litres/day match the REAL
+    distribution (NWSDB bills). Rank-matching: the i-th lightest simulated household gets the
+    real litres/day at the same quantile, so bigger households keep the bigger targets."""
+    base = {r["household_id"]: float(r["simdeum_litres_per_day"]) for r in csv.DictReader(open(base_csv))}
+    real = sorted(float(r["median_litres_per_day"]) for r in csv.DictReader(open(real_csv))
+                  if r["median_litres_per_day"] and int(r["usable_months"]) >= min_usable_months)
+    ids = [f"H{i + 1:02d}" for i in range(n_households)]
+    order = sorted(ids, key=lambda h: base[h])
+    out = {}
+    for rank, h in enumerate(order):
+        q = (rank + 0.5) / len(order)
+        target = float(np.quantile(real, q))
+        out[h] = {"target": round(target, 1), "multiplier": round(target / base[h], 3)}
+    return out
+
+
+def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, seed, out_dir, night_shift=False,
+                       usage_multiplier=1.0):
     rng = random.Random(seed)
+    cal_rng = random.Random(seed + 7_919)  # calibration draws kept separate from the main stream
     np.random.seed(seed % (2 ** 32))  # pySIMDEUM draws from numpy's global generator
     stats = Statistics()
     house = build_household(house_type, stats)
@@ -152,6 +191,18 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
     for d in range(n_days):
         day = start_date + timedelta(days=d)
         per_fixture, enduses = simulate_day(house, stats, weekend=day.weekday() >= 5)
+        if usage_multiplier != 1.0:
+            # Calibration: more (or fewer) uses of the same fixtures at the household's usual
+            # times — overlay extra independently simulated days of THIS household; the
+            # fractional part keeps a random share of one more day's uses. Flow rates unchanged.
+            whole, frac = int(usage_multiplier), usage_multiplier - int(usage_multiplier)
+            if whole == 0:
+                per_fixture = thin(per_fixture, frac, cal_rng)
+            else:
+                for _ in range(whole - 1):
+                    per_fixture = per_fixture + simulate_day(house, stats, weekend=day.weekday() >= 5)[0]
+                if frac > 0:
+                    per_fixture = per_fixture + thin(simulate_day(house, stats, weekend=day.weekday() >= 5)[0], frac, cal_rng)
         if night_shift:  # the whole routine moves NIGHT_SHIFT_H later: active at night, asleep by day
             per_fixture = np.roll(per_fixture, NIGHT_SHIFT_H * 3600, axis=1)
         raw_litres += per_fixture.sum() / 60
@@ -331,6 +382,7 @@ def generate_household(hid, house_type, start_date, end_date, n_micro, n_burst, 
         "people": len(house.users),
         "members": " ".join(people),
         "fixtures": " ".join(type(a).__name__ for a in house.appliances),
+        "usage_multiplier": usage_multiplier,
         "simdeum_litres_per_day": round(raw_litres / n_days, 1),
         # Normal use only (anomalies excluded), as the meter measured it on the loop.
         "loop_litres_per_day": round(sum(r[2] for r in rows if r[4] == "normal") / n_days, 1),
@@ -350,23 +402,38 @@ def main():
     ap.add_argument("--bursts", type=int, default=2, help="bursts per household")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(Path(__file__).parent / "out"))
+    ap.add_argument("--first", type=int, default=1, help="generate only households FIRST..LAST (1-based) — "
+                    "to split a large run across parallel processes; ids and seeds are unchanged")
+    ap.add_argument("--last", type=int, default=None)
+    ap.add_argument("--calibrate-to", help="real per-household usage (../nwsdb/nwsdb_households.csv): "
+                    "scale each household's usage so the litres/day distribution matches it")
+    ap.add_argument("--base", default=str(Path(__file__).parent / "out" / "households.csv"),
+                    help="households.csv of an UNCALIBRATED run with the same --seed/--households/dates "
+                         "(gives each household's natural litres/day for the calibration)")
     a = ap.parse_args()
 
     start, end = datetime.fromisoformat(a.start).date(), datetime.fromisoformat(a.end).date()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    targets = calibrated_targets(a.base, a.calibrate_to, a.households) if a.calibrate_to else {}
+    first, last = a.first, a.last or a.households
     summary = []
-    for i in range(a.households):
+    for i in range(first - 1, last):
         hid = f"H{i + 1:02d}"
         house_type = HOUSE_TYPES[i % len(HOUSE_TYPES)]
         night = (i + 1) % NIGHT_SHIFT_EVERY == 0
+        mult = targets[hid]["multiplier"] if targets else 1.0
         info = generate_household(hid, house_type, start, end, a.micro_leaks, a.bursts, a.seed * 1000 + i, out,
-                                  night_shift=night)
+                                  night_shift=night, usage_multiplier=mult)
+        if targets:
+            info["calibration_target_litres_per_day"] = targets[hid]["target"]
         summary.append(info)
         print(f"{hid}  {house_type:<10} {info['routine']:<11} {info['people']} people  {info['simdeum_litres_per_day']:>6} L/day (SIMDEUM)"
               f"  {info['loop_litres_per_day']:>6} L/day (loop)  {info['readings']} readings", flush=True)
 
-    with open(out / "households.csv", "w", newline="") as f:
+    # A partial run (--first/--last) writes its own summary file; merge them afterwards.
+    name = "households.csv" if (first, last) == (1, a.households) else f"households_{first:03d}-{last:03d}.csv"
+    with open(out / name, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(summary[0]))
         w.writeheader()
         w.writerows(summary)
