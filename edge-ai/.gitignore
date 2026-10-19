@@ -9,3 +9,4 @@ usage_forecast/results_patterned/*.joblib
 data/loop_household/out_a1/
 usage_forecast/data/weather_cache.json
 usage_forecast/results_weather/*.joblib
+usage_forecast/results_calibrated_100/*.joblib

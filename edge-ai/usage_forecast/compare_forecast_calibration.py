@@ -21,12 +21,14 @@ Usage (from edge-ai/usage_forecast):
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-import train_forecast as tf
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import train_forecast as tf  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
