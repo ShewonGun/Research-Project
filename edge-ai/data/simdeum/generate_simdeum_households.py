@@ -402,6 +402,9 @@ def main():
     ap.add_argument("--bursts", type=int, default=2, help="bursts per household")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(Path(__file__).parent / "out"))
+    ap.add_argument("--first", type=int, default=1, help="generate only households FIRST..LAST (1-based) — "
+                    "to split a large run across parallel processes; ids and seeds are unchanged")
+    ap.add_argument("--last", type=int, default=None)
     ap.add_argument("--calibrate-to", help="real per-household usage (../nwsdb/nwsdb_households.csv): "
                     "scale each household's usage so the litres/day distribution matches it")
     ap.add_argument("--base", default=str(Path(__file__).parent / "out" / "households.csv"),
@@ -413,8 +416,9 @@ def main():
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     targets = calibrated_targets(a.base, a.calibrate_to, a.households) if a.calibrate_to else {}
+    first, last = a.first, a.last or a.households
     summary = []
-    for i in range(a.households):
+    for i in range(first - 1, last):
         hid = f"H{i + 1:02d}"
         house_type = HOUSE_TYPES[i % len(HOUSE_TYPES)]
         night = (i + 1) % NIGHT_SHIFT_EVERY == 0
@@ -427,7 +431,9 @@ def main():
         print(f"{hid}  {house_type:<10} {info['routine']:<11} {info['people']} people  {info['simdeum_litres_per_day']:>6} L/day (SIMDEUM)"
               f"  {info['loop_litres_per_day']:>6} L/day (loop)  {info['readings']} readings", flush=True)
 
-    with open(out / "households.csv", "w", newline="") as f:
+    # A partial run (--first/--last) writes its own summary file; merge them afterwards.
+    name = "households.csv" if (first, last) == (1, a.households) else f"households_{first:03d}-{last:03d}.csv"
+    with open(out / name, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(summary[0]))
         w.writeheader()
         w.writerows(summary)
