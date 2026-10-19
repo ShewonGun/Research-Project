@@ -277,7 +277,7 @@ def main():
                  "micro_leak_delay_min", "burst_delay_min", "caught_total"]
     report = [
         "# AquaFlow leak detection — results\n",
-        f"30 simulated households (SIMDEUM + loop sensor model), {n_ev} injected anomalies. "
+        f"{len(homes)} simulated households (SIMDEUM + loop sensor model), {n_ev} injected anomalies. "
         f"6-fold cross-validation by household: every household is tested once by a model that never saw it. "
         f"Values are mean ± standard deviation across folds; delays are medians in minutes. "
         f"Alarm false-alarm budget when tuning: {a.fa_budget}/day per alarm.\n",
