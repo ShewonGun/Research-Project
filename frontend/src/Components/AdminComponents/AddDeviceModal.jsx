@@ -105,7 +105,7 @@ const AddDeviceModal = ({ open, editing, onClose, onSaved }) => {
                                 {editing && <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">Device ID can't be changed.</p>}
                             </Field>
                             <Field label="Name">
-                                <input type="text" value={form.name} onChange={set("name")} className={inputCls} placeholder="Kitchen Meter" />
+                                <input type="text" value={form.name} onChange={set("name")} className={inputCls} placeholder="97/A" />
                             </Field>
                             <Field label="Location">
                                 <input type="text" value={form.location} onChange={set("location")} className={inputCls} placeholder="Colombo" />
