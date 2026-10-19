@@ -61,7 +61,12 @@ def main():
     ap.add_argument("--data", default=str(HERE.parent / "data" / "simdeum" / "out_forecast"))
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--with-weather", action="store_true", help="also apply assumed weather + holiday effects (real weather/holiday dates)")
+    ap.add_argument("--season-csv", help="MEASURED seasonality per calendar month (results_monthly_nwsdb/seasonality.csv, "
+                    "column median = usage / household median from real NWSDB bills): multiply each day by its month's factor")
+    ap.add_argument("--out", help="output CSV (default data/patterned_daily.csv or data/patterned_weather_daily.csv); "
+                    "the pattern log goes next to it as <name>_log.csv")
     a = ap.parse_args()
+    season = pd.read_csv(a.season_csv).set_index("month")["median"].to_dict() if a.season_csv else None
     rng = np.random.default_rng(a.seed)
     data = Path(a.data)
     info = pd.read_csv(data / "households.csv").set_index("household_id")
@@ -81,15 +86,21 @@ def main():
         if a.with_weather:
             cal = cf.table_for([x.date() for x in d.index])
             factor *= (1 + PER_DEGREE * (cal["tmax"].values - HOT_BASE_C).clip(min=-3)) * (1 + RAIN_EFFECT * cal["is_rainy"].values) * (1 + HOLIDAY_EFFECT * cal["is_holiday"].values)
+        if season:
+            factor *= np.array([season.get(day.month, 1.0) for day in d.index])
         for day, base, fac in zip(d.index, d.values, factor):
             rows.append({"home": h, "day": day.date(), "litres": round(base * fac, 2),
                          "house_type": info.loc[h, "house_type"], "weekend_uplift": round(up, 3)})
-    out = HERE / "data"
-    out.mkdir(exist_ok=True)
-    name = "patterned_weather_daily.csv" if a.with_weather else "patterned_daily.csv"
-    pd.DataFrame(rows).to_csv(out / name, index=False)
-    pd.DataFrame(log).to_csv(out / ("pattern_log_weather.csv" if a.with_weather else "pattern_log.csv"), index=False)
-    print(f"{len(rows)} household-days, {len(log)} spells -> {out}")
+    if a.out:
+        target = Path(a.out)
+        log_path = target.with_name(target.stem + "_log.csv")
+    else:
+        target = HERE / "data" / ("patterned_weather_daily.csv" if a.with_weather else "patterned_daily.csv")
+        log_path = HERE / "data" / ("pattern_log_weather.csv" if a.with_weather else "pattern_log.csv")
+    target.parent.mkdir(exist_ok=True, parents=True)
+    pd.DataFrame(rows).to_csv(target, index=False)
+    pd.DataFrame(log).to_csv(log_path, index=False)
+    print(f"{len(rows)} household-days, {len(log)} spells -> {target}")
 
 
 if __name__ == "__main__":
