@@ -5,7 +5,7 @@ import Subscription from "../models/Subscription.js";
 import { getOrOpenBill, applyPostpaidEnforcement } from "../utils/postpaid.js";
 import { runLeakDetection } from "../utils/leakDetection.js";
 import { getActiveTariff } from "../models/Tariff.js";
-import { computeBill } from "../utils/computeBill.js";
+import { computeBill, runningPeriodDays } from "../utils/computeBill.js";
 import { emitReading, emitDeviceChanged, emitBillUpdated } from "../config/socket.js";
 import { resolveTimeZone, dayWindow } from "../utils/dayWindow.js";
 
@@ -60,7 +60,7 @@ const accruePostpaid = async (device, consumedVolume) => {
     // bill tick up with every reading instead of waiting for the cycle to close.
     // Display only — a failure here must never fail (and so re-send) the reading.
     try {
-        const estimate = computeBill(bill.volumeUsed, await getActiveTariff());
+        const estimate = computeBill(bill.volumeUsed, await getActiveTariff(), { periodDays: runningPeriodDays(bill.periodStart) });
         emitBillUpdated(device, bill, estimate);
     } catch {
         /* clients still catch up on their next refresh */

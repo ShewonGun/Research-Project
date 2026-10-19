@@ -1,6 +1,6 @@
 import Bill from "../models/Bill.js";
 import { getActiveTariff } from "../models/Tariff.js";
-import { computeBill } from "./computeBill.js";
+import { computeBill, periodDaysBetween } from "./computeBill.js";
 
 // Postpaid enforcement policy.
 export const DUE_DAYS = 14; // days after cycle close before a bill is due
@@ -85,13 +85,14 @@ export const closeCycle = async (device, tariff) => {
     if (!open) return null;
 
     const t = tariff || (await getActiveTariff());
-    const priced = computeBill(open.volumeUsed, t);
     const now = new Date();
+    const priced = computeBill(open.volumeUsed, t, { periodDays: periodDaysBetween(open.periodStart, now) });
 
     open.periodEnd = now;
     open.units = priced.units;
     open.usageCharge = priced.usageCharge;
     open.fixedCharge = priced.fixedCharge;
+    open.vat = priced.vat;
     open.amount = priced.amount;
     open.breakdown = priced.breakdown;
     open.status = "unpaid";
