@@ -91,7 +91,7 @@ export const buildBillEstimate = ({ volumeUsed, periodStart, forecast, usedToday
     const daysLeft = Math.max(0, (cycleEnd - now) / DAY_MS);
     const project = (key) => volumeUsed + litresUntil(series(forecast, key), usedToday, frac, daysLeft);
     const litres = { low: project("low"), mid: project("litres"), high: project("high") };
-    const bill = (l) => computeBill(l, tariff);
+    const bill = (l) => computeBill(l, tariff, { periodDays: cycleDays });
     const mid = bill(litres.mid);
     return {
         cycleStart: periodStart,
@@ -102,6 +102,7 @@ export const buildBillEstimate = ({ volumeUsed, periodStart, forecast, usedToday
         amount: { low: bill(litres.low).amount, mid: mid.amount, high: bill(litres.high).amount },
         breakdown: mid.breakdown,
         fixedCharge: mid.fixedCharge,
+        vat: mid.vat,
         assumedCycleDays: cycleDays,
     };
 };

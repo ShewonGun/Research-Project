@@ -395,6 +395,17 @@ const Billing = () => {
                                 <ReadField label="Name" value={tariff.name || "—"} />
                                 <ReadField label="Litres per unit" value={Number(tariff.unitLiters).toLocaleString()} />
                                 <ReadField label="Fixed charge" value={`Rs. ${Number(tariff.fixedCharge).toLocaleString()}`} />
+                                {/* NWSDB-style options — shown only when the tariff uses them */}
+                                {tariff.vatRate > 0 && <ReadField label="VAT" value={`${+(tariff.vatRate * 100).toFixed(2)}%`} />}
+                                {tariff.proRataDays > 0 && <ReadField label="Pro-rated" value={`per ${tariff.proRataDays} days of the billing period`} />}
+                                {tariff.serviceTiers?.length > 0 && (
+                                    <ReadField
+                                        label={`Service charge by usage${tariff.proRataDays > 0 ? ` (per ${tariff.proRataDays} days)` : ""}`}
+                                        value={tariff.serviceTiers
+                                            .map((t) => `${t.maxUnits == null ? "more" : `≤${t.maxUnits}`}: Rs. ${Number(t.charge).toLocaleString()}`)
+                                            .join(" · ")}
+                                    />
+                                )}
                             </div>
 
                             <div className="mt-5">

@@ -35,6 +35,7 @@ const billSchema = new mongoose.Schema(
         units: { type: Number },
         usageCharge: { type: Number },
         fixedCharge: { type: Number },
+        vat: { type: Number }, // VAT included in amount (tariffs with vatRate)
         amount: { type: Number }, // total payable, LKR
         breakdown: { type: [breakdownSchema], default: [] },
 
