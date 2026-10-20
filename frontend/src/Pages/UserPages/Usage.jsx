@@ -7,12 +7,12 @@ import { useToast } from "../../Context/ToastContext.jsx";
 import { apiFetch } from "../../lib/api.js";
 import { exportCsv, dateStamp, csvDateText } from "../../lib/exportCsv.js";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
-import UsageChart from "../../Components/SharedComponents/UsageChart.jsx";
 import FlowChart from "../../Components/SharedComponents/FlowChart.jsx";
 import UsageTrend from "../../Components/SharedComponents/UsageTrend.jsx";
 import CumulativeChart from "../../Components/SharedComponents/CumulativeChart.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import UsageForecast from "../../Components/UserComponents/UsageForecast.jsx";
+import DailyConsumption from "../../Components/UserComponents/DailyConsumption.jsx";
 import GoalCard from "../../Components/UserComponents/GoalCard.jsx";
 
 const EXPORT_DAYS = 30;
@@ -103,15 +103,7 @@ const Usage = () => {
 
             {/* Daily consumption + forecast */}
             <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-2">
-                <div className="rounded-sm border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-                    <div className="flex items-center gap-2">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
-                            <FiBarChart2 className="h-4 w-4" />
-                        </span>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Daily consumption</p>
-                    </div>
-                    <UsageChart daily={daily} total={week} />
-                </div>
+                <DailyConsumption daily={daily} />
 
                 {/* Model forecast (7 days + run-out / bill estimate); the simple estimate below is the fallback. */}
                 <UsageForecast
