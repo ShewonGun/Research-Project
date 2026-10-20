@@ -88,6 +88,7 @@ export const buildForecast = async (device, timeZone) => {
         usedCalendar: !!result.usedCalendar, // true when weather + public holidays fed the forecast numbers
         daysUsed: result.daysUsed,
         usedToday: +usedToday.toFixed(2),
+        history: [...history].sort((a, b) => (a.day < b.day ? -1 : 1)), // the complete days the forecast was based on
         forecast,
         billingMode: device.billingMode,
         asOf: now,
