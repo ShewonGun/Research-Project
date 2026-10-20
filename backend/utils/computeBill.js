@@ -122,6 +122,40 @@ const finish = (units, usageCharge, fixedCharge, vatRate, breakdown) => {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// How far this usage is from the next price block: "2 units more and each unit costs Rs. 90 instead
+// of Rs. 70". Follows computeBill's rules (blocks per proRataDays, scaled to the period). Returns null
+// in the top (open-ended) block or without blocks. Also reports the next service-charge step, if any.
+//   { units, rate, nextRate, unitsToNext, litresToNext, service: { now, next, unitsToNext } | null }
+export const nextBlockInfo = (liters, tariff, opts = {}) => {
+    const unitLiters = tariff?.unitLiters || 1000;
+    const units = Math.max(0, (liters || 0) / unitLiters);
+    const byUpper = (a, b) => (a.maxUnits ?? Infinity) - (b.maxUnits ?? Infinity);
+    const tiers = [...(tariff?.tiers || [])].sort(byUpper);
+    const f = tariff?.proRataDays > 0 && opts.periodDays > 0 ? opts.periodDays / tariff.proRataDays : 1;
+    const u30 = units / f;
+    const i = tiers.findIndex((t) => t.maxUnits == null || u30 < t.maxUnits);
+    if (i < 0 || tiers[i].maxUnits == null || i + 1 >= tiers.length) return null;
+    const unitsToNext = (tiers[i].maxUnits - u30) * f;
+
+    const serviceTiers = [...(tariff?.serviceTiers || [])].sort(byUpper);
+    const s = serviceTiers.findIndex((t) => t.maxUnits == null || u30 < t.maxUnits);
+    const service =
+        s >= 0 && serviceTiers[s].maxUnits != null && s + 1 < serviceTiers.length
+            ? { now: serviceTiers[s].charge, next: serviceTiers[s + 1].charge, unitsToNext: round2((serviceTiers[s].maxUnits - u30) * f) }
+            : null;
+    return {
+        units: round2(units),
+        rate: tiers[i].rate,
+        nextRate: tiers[i + 1].rate,
+        unitsToNext: round2(unitsToNext),
+        litresToNext: Math.round(unitsToNext * unitLiters),
+        service,
+    };
+};
+
+// The running bill shown in the app: computeBill plus how far it is from the next price block.
+export const liveEstimate = (liters, tariff, opts = {}) => ({ ...computeBill(liters, tariff, opts), nextBlock: nextBlockInfo(liters, tariff, opts) });
+
 // Billing-period length in days (at least 1) — for tariffs that pro-rate.
 export const periodDaysBetween = (start, end = new Date()) =>
     Math.max(1, (new Date(end) - new Date(start)) / (24 * 60 * 60 * 1000));

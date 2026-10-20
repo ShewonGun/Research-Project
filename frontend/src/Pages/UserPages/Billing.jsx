@@ -4,6 +4,7 @@ import { useMyWater } from "../../Context/MyWaterContext.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
+import BillBreakdown from "../../Components/UserComponents/BillBreakdown.jsx";
 
 const statusStyles = {
     unpaid: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
@@ -82,6 +83,7 @@ const Billing = () => {
                         </span>
                     )}
                 </div>
+                <BillBreakdown estimate={estimate} deviceId={device._id} />
                 <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
                     Updates live with every meter reading, priced at the current tariff. You'll be billed when the cycle closes.
                 </p>
