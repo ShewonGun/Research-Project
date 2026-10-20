@@ -14,10 +14,13 @@ The model was trained at AquaFlow-loop scale (pump ≈ 3.5 L/min), so flows are 
 MAX_LPM before scoring.
 
 Run (from edge-ai/service):  uvicorn app:app --port 8001
-Env: LEAK_MODEL_PATH     (default ../leak_detection/results/leak_model.joblib)
-     FORECAST_MODEL_PATH (default ../usage_forecast/results_patterned/forecast_model.joblib)
+Defaults are the current models (100 households calibrated to real NWSDB usage); the env vars
+only override them:
+Env: LEAK_MODEL_PATH     (default ../leak_detection/results_calibrated_100/leak_model.joblib)
+     FORECAST_MODEL_PATH (default ../usage_forecast/results_calibrated_100/forecast_model.joblib)
+     FORECAST_USE_CALENDAR  (default 0; 1 = also use the experimental weather/holiday model, whose
+                             effects were ASSUMED, not measured)
      FORECAST_CAL_MODEL_PATH (default ../usage_forecast/results_weather/forecast_model_calendar.joblib)
-     FORECAST_USE_CALENDAR  (default 1; 0 = ignore weather/holidays in the forecast numbers)
      FORECAST_LAT / FORECAST_LON (default Colombo)
 """
 import os
@@ -33,13 +36,16 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "leak_detection"))
 import leakdetect as ld  # noqa: E402
 
-MODEL_PATH = os.environ.get("LEAK_MODEL_PATH", str(HERE.parent / "leak_detection" / "results" / "leak_model.joblib"))
+MODEL_PATH = os.environ.get("LEAK_MODEL_PATH", str(HERE.parent / "leak_detection" / "results_calibrated_100" / "leak_model.joblib"))
 MAX_LPM = 6.0          # loop scale: anything above is a sensor glitch / out of the model's range
 LATCH_MIN = 10         # an alarm stays "active" this long after it last fired (a leaking cistern
                        # only looks like a leak in bursts, with quiet minutes in between)
 MIN_MINUTES = 30       # not enough history → no verdict
 STALE_MIN = 3          # newest reading older than this → device is offline, no verdict
 
+if not Path(MODEL_PATH).exists():
+    sys.exit(f"Leak model not found: {MODEL_PATH}\n"
+             "Model files are not in git — copy leak_model.joblib there (or set LEAK_MODEL_PATH).")
 saved = joblib.load(MODEL_PATH)
 app = FastAPI(title="AquaFlow leak + usage model")
 
@@ -53,7 +59,7 @@ import numpy as np  # noqa: E402
 import calendar_features as cf  # noqa: E402
 import train_forecast as tf  # noqa: E402
 
-FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "usage_forecast" / "results_patterned" / "forecast_model.joblib"))
+FORECAST_PATH = os.environ.get("FORECAST_MODEL_PATH", str(HERE.parent / "usage_forecast" / "results_calibrated_100" / "forecast_model.joblib"))
 try:
     forecast_saved = joblib.load(FORECAST_PATH)
 except Exception:        # no forecast model on this machine -> simple-average fallback only
@@ -63,7 +69,7 @@ try:
     calendar_saved = joblib.load(CAL_PATH)
 except Exception:
     calendar_saved = None
-USE_CALENDAR = os.environ.get("FORECAST_USE_CALENDAR", "1") != "0"
+USE_CALENDAR = os.environ.get("FORECAST_USE_CALENDAR", "0") == "1"  # experimental; off unless asked for
 
 
 def _refresh_weather_forever():
