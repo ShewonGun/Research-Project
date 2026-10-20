@@ -24,6 +24,17 @@ const alertSchema = new mongoose.Schema(
         source: { type: String, enum: ["rules", "model"], default: "rules" },
 
         status: { type: String, enum: ["active", "acknowledged", "resolved"], default: "active" },
+
+        // The household's (or an admin's) answer to "was this a leak?" — real labels for the model.
+        //   normal-use → "It was me": the alert is resolved and similar model alerts pause for a while.
+        //   real-leak  → "Yes, a leak": the alert stays open (marked seen) until it is fixed.
+        userFeedback: {
+            label: { type: String, enum: ["normal-use", "real-leak"] },
+            note: { type: String, trim: true, maxlength: 300 },
+            at: { type: Date },
+            by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+            role: { type: String },
+        },
         startedAt: { type: Date, default: Date.now },
         acknowledgedAt: { type: Date },
         resolvedAt: { type: Date },

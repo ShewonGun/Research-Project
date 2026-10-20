@@ -46,6 +46,23 @@ const closeValve = async (device) => {
 const burstShutoffMessage = (score) =>
     `Burst detected by the AI model (confidence ${Math.round(score * 100)}%) — flow has been running non-stop far longer than normal use. Supply was automatically shut off to prevent flooding.`;
 
+// "It was me": after a household marks a model alert as normal use, the model raises no new alert of
+// that type on that device for ALERT_SNOOZE_MIN minutes (default 60), so the same water use isn't
+// flagged again a minute later. Model alerts only — the rule-based detector is never paused.
+const DEFAULT_SNOOZE_MIN = 60;
+export const snoozeMinutes = () => {
+    const v = Number(process.env.ALERT_SNOOZE_MIN);
+    return Number.isFinite(v) && v >= 0 ? v : DEFAULT_SNOOZE_MIN;
+};
+export const snoozeQuery = (deviceId, type, now = Date.now()) => ({
+    device: deviceId,
+    type,
+    source: "model",
+    "userFeedback.label": "normal-use",
+    "userFeedback.at": { $gte: new Date(now - snoozeMinutes() * 60 * 1000) },
+});
+const snoozed = async (deviceId, type) => snoozeMinutes() > 0 && !!(await Alert.exists(snoozeQuery(deviceId, type)));
+
 const openModelAlert = (deviceId, type) =>
     Alert.findOne({ device: deviceId, type, source: "model", status: { $in: ["active", "acknowledged"] } });
 
@@ -76,6 +93,7 @@ export const scoreDevice = async (baseUrl, device) => {
         const last = readings[readings.length - 1];
         const shut = type === "burst" && shouldShutOff({ enabled: autoShutoffEnabled(), score: v.score, lastFlow: last.flowRate, lastReadingAt: last.timestamp });
         if (v.active && !open) {
+            if (await snoozed(device._id, type)) continue;
             if (shut) await closeValve(device);
             await Alert.create({
                 device: device._id,

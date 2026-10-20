@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiInfo } from "react-icons/fi";
+import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiInfo, FiUser, FiDroplet } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { connectSocket } from "../../lib/socket.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
@@ -105,6 +105,17 @@ const Alerts = () => {
     };
     const acknowledge = (id) => run(() => apiFetch(`/api/alerts/${id}/acknowledge`, { method: "PUT" }), "Alert dismissed.");
     const resolve = (id) => run(() => apiFetch(`/api/alerts/${id}/resolve`, { method: "PUT" }), "Marked as fixed.");
+    // "It was me" / "Yes, a leak" — the household's answer becomes a real label for the leak model.
+    const answer = (a, label) => {
+        if (label === "normal-use") {
+            const valve = a.autoAction === "valve-closed" && a.status !== "resolved" ? " The valve stays closed until your provider restores the supply." : "";
+            if (!window.confirm(`Mark this as normal water use? The alert will be closed and similar AI alerts pause for an hour.${valve}`)) return;
+        }
+        return run(
+            () => apiFetch(`/api/alerts/${a._id}/feedback`, { method: "PUT", body: { label } }),
+            label === "normal-use" ? "Thanks, noted as normal use." : "Thanks. Please check for the leak and mark it fixed once repaired."
+        );
+    };
 
     const activeCount = all.filter((a) => a.status === "active").length;
     const resolvedCount = all.filter((a) => a.status === "resolved").length;
@@ -182,6 +193,30 @@ const Alerts = () => {
                                         </button>
                                     </p>
                                     {explained === a._id && <AlertExplanation alertId={a._id} />}
+                                    {a.userFeedback?.label ? (
+                                        <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                            {a.userFeedback.label === "normal-use" ? <FiUser className="h-3 w-3" /> : <FiDroplet className="h-3 w-3" />}
+                                            {a.userFeedback.label === "normal-use" ? "You said: it was you (normal use)" : "You confirmed: a real leak"}
+                                        </p>
+                                    ) : (
+                                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                            <span className="text-xs text-slate-500 dark:text-slate-400">Was this a leak?</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => answer(a, "normal-use")}
+                                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            >
+                                                <FiUser className="h-3 w-3" /> It was me
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => answer(a, "real-leak")}
+                                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            >
+                                                <FiDroplet className="h-3 w-3" /> Yes, a leak
+                                            </button>
+                                        </div>
+                                    )}
                                     {burst && a.autoAction === "valve-closed" && a.status !== "resolved" && (
                                         <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
                                             Your supply was automatically shut off. Contact your provider to restore it after checking for damage.

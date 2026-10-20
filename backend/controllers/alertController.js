@@ -76,6 +76,39 @@ export const explainAlert = async (req, res) => {
     }
 };
 
+// "It was me" / "Yes, a leak": label an alert. Works on resolved alerts too (e.g. one the detector
+// already cleared), and a later answer replaces an earlier one. Never touches the valve.
+//   normal-use → resolves the alert if still open (model alerts of this type then pause, see
+//                utils/modelLeakDetection.js).
+//   real-leak  → marks an active alert as seen; it stays open until someone marks it fixed.
+// @route   PUT /api/alerts/:id/feedback   { label: "normal-use" | "real-leak", note? }
+// @access  Private
+export const FEEDBACK_LABELS = ["normal-use", "real-leak"];
+export const feedbackAlert = async (req, res) => {
+    try {
+        const { label, note } = req.body || {};
+        if (!FEEDBACK_LABELS.includes(label)) return res.status(400).json({ message: "label must be normal-use or real-leak" });
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: "Alert not found" });
+        const alert = await Alert.findOne({ _id: req.params.id, ...ownershipFilter(req) });
+        if (!alert) return res.status(404).json({ message: "Alert not found" });
+
+        const now = new Date();
+        alert.userFeedback = { label, note: note ? String(note).slice(0, 300) : undefined, at: now, by: req.user._id, role: req.user.role };
+        if (label === "normal-use" && alert.status !== "resolved") {
+            alert.status = "resolved";
+            alert.resolvedAt = now;
+        } else if (label === "real-leak" && alert.status === "active") {
+            alert.status = "acknowledged";
+            alert.acknowledgedAt = now;
+        }
+        await alert.save();
+        emitAlertChanged(alert.status, { userId: alert.user, deviceId: alert.device });
+        return res.json({ alert });
+    } catch (error) {
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
 // Mark an alert as resolved (the leak was fixed / handled).
 // @route   PUT /api/alerts/:id/resolve
 // @access  Private
