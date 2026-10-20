@@ -15,7 +15,7 @@ const tierSchema = new mongoose.Schema(
  * Postpaid tariff (NWSDB-style rising-block domestic tariff). A single active
  * tariff drives every postpaid bill; admins edit it. Consumption is converted
  * to units (litres / unitLiters) and charged marginally across the blocks, plus
- * a flat monthly service charge.
+ * a service charge and VAT. Defaults are the real NWSDB domestic tariff.
  */
 // Optional service-charge tier: the charge applies up to `maxUnits` of consumption (per
 // proRataDays when the tariff pro-rates). null → open-ended top tier.
@@ -27,52 +27,10 @@ const serviceTierSchema = new mongoose.Schema(
     { _id: false }
 );
 
-const tariffSchema = new mongoose.Schema(
-    {
-        name: { type: String, default: "NWSDB Domestic", trim: true },
-        // Litres per billing unit (1 unit = 1 m³ = 1000 L).
-        unitLiters: { type: Number, default: 1000, min: 1 },
-        // Flat monthly service charge in LKR.
-        fixedCharge: { type: Number, default: 0, min: 0 },
-        // Rising blocks, ascending by maxUnits (null last).
-        tiers: {
-            type: [tierSchema],
-            default: [
-                { maxUnits: 5, rate: 2 },
-                { maxUnits: 10, rate: 20 },
-                { maxUnits: 15, rate: 40 },
-                { maxUnits: 25, rate: 60 },
-                { maxUnits: null, rate: 100 },
-            ],
-        },
-        // ── Optional (NWSDB-style); unset = the simple tariff above, priced exactly as before ──
-        // Service charge by consumption tier instead of the flat fixedCharge.
-        serviceTiers: { type: [serviceTierSchema], default: [] },
-        // VAT on (usage + service charge), e.g. 0.18. Included in the bill amount.
-        vatRate: { type: Number, default: 0, min: 0, max: 1 },
-        // Pro-rating: blocks and charges are defined per this many days and scaled to the
-        // billing period's length (NWSDB uses 30). 0 = no pro-rating.
-        proRataDays: { type: Number, default: 0, min: 0 },
-        // Only the active tariff is used for new bills.
-        isActive: { type: Boolean, default: true },
-        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    },
-    { timestamps: true }
-);
-
-const Tariff = mongoose.model("Tariff", tariffSchema);
-
-// Return the active tariff, seeding a default one on first use.
-export const getActiveTariff = async () => {
-    let tariff = await Tariff.findOne({ isActive: true }).sort({ updatedAt: -1 });
-    if (!tariff) tariff = await Tariff.create({});
-    return tariff;
-};
-
 // NWSDB domestic tariff in force since ~Oct 2024, derived from 2,098 real bills
-// (edge-ai/data/nwsdb): reproduces 95 % of water charges and 97.5 % of service charges to the
-// rupee. Per 30 days, pro-rated to the billing period; VAT 18 %. Apply it with
-// `node scripts/useNwsdbTariff.js` (and `--revert` to go back).
+// (edge-ai/data/nwsdb): reproduces 99.8 % of water charges and 100 % of service charges to the
+// rupee (node scripts/checkNwsdbTariff.js). Per 30 days, pro-rated to the billing period; VAT 18 %. Apply it with
+// `node scripts/useNwsdbTariff.js` (removes any older tariff from the database).
 export const NWSDB_DOMESTIC_2024 = {
     name: "NWSDB Domestic (from Oct 2024)",
     unitLiters: 1000,
@@ -102,6 +60,42 @@ export const NWSDB_DOMESTIC_2024 = {
     ],
     vatRate: 0.18,
     proRataDays: 30,
+};
+
+const tariffSchema = new mongoose.Schema(
+    {
+        name: { type: String, default: NWSDB_DOMESTIC_2024.name, trim: true },
+        // Litres per billing unit (1 unit = 1 m³ = 1000 L).
+        unitLiters: { type: Number, default: 1000, min: 1 },
+        // Flat monthly service charge in LKR (used when there are no serviceTiers).
+        fixedCharge: { type: Number, default: NWSDB_DOMESTIC_2024.fixedCharge, min: 0 },
+        // Rising blocks, ascending by maxUnits (null last).
+        tiers: {
+            type: [tierSchema],
+            default: () => NWSDB_DOMESTIC_2024.tiers.map((t) => ({ ...t })),
+        },
+        // ── NWSDB-style options (defaults = the NWSDB tariff); empty / 0 = a simple block tariff ──
+        // Service charge by consumption tier instead of the flat fixedCharge.
+        serviceTiers: { type: [serviceTierSchema], default: () => NWSDB_DOMESTIC_2024.serviceTiers.map((t) => ({ ...t })) },
+        // VAT on (usage + service charge), e.g. 0.18. Included in the bill amount.
+        vatRate: { type: Number, default: NWSDB_DOMESTIC_2024.vatRate, min: 0, max: 1 },
+        // Pro-rating: blocks and charges are defined per this many days and scaled to the
+        // billing period's length (NWSDB uses 30). 0 = no pro-rating.
+        proRataDays: { type: Number, default: NWSDB_DOMESTIC_2024.proRataDays, min: 0 },
+        // Only the active tariff is used for new bills.
+        isActive: { type: Boolean, default: true },
+        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+    { timestamps: true }
+);
+
+const Tariff = mongoose.model("Tariff", tariffSchema);
+
+// The active tariff; a database without one starts on the real NWSDB domestic tariff.
+export const getActiveTariff = async () => {
+    let tariff = await Tariff.findOne({ isActive: true }).sort({ updatedAt: -1 });
+    if (!tariff) tariff = await Tariff.create({ isActive: true }); // schema defaults = NWSDB tariff
+    return tariff;
 };
 
 export default Tariff;

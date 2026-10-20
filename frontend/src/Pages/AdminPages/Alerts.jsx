@@ -238,7 +238,7 @@ const Alerts = () => {
                                     </div>
                                 </div>
 
-                                {(a.status === "active" || a.status !== "resolved" || (burst && a.autoAction === "valve-closed" && a.device?._id)) && (
+                                {(a.status === "active" || a.status !== "resolved" || (["valve-closed", "valve-throttled"].includes(a.autoAction) && a.device?._id)) && (
                                     <div className="mt-3 flex items-center justify-end gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
                                         {a.status === "active" && (
                                             <button
@@ -262,7 +262,7 @@ const Alerts = () => {
                                                 Resolve
                                             </button>
                                         )}
-                                        {burst && a.autoAction === "valve-closed" && a.status === "resolved" && a.device?._id && (
+                                        {["valve-closed", "valve-throttled"].includes(a.autoAction) && a.status === "resolved" && a.device?._id && (
                                             <button
                                                 type="button"
                                                 onClick={() => reopen(a.device._id)}
@@ -346,7 +346,7 @@ const Alerts = () => {
                                                         Resolve
                                                     </button>
                                                 )}
-                                                {burst && a.autoAction === "valve-closed" && a.status === "resolved" && a.device?._id && (
+                                                {["valve-closed", "valve-throttled"].includes(a.autoAction) && a.status === "resolved" && a.device?._id && (
                                                     <button
                                                         type="button"
                                                         onClick={() => reopen(a.device._id)}

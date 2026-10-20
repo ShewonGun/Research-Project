@@ -108,7 +108,14 @@ const Alerts = () => {
     // "It was me" / "Yes, a leak" — the household's answer becomes a real label for the leak model.
     const answer = (a, label) => {
         if (label === "normal-use") {
-            const valve = a.autoAction === "valve-closed" && a.status !== "resolved" ? " The valve stays closed until your provider restores the supply." : "";
+            const valve =
+                a.status === "resolved"
+                    ? ""
+                    : a.autoAction === "valve-closed"
+                      ? " The valve stays closed until your provider restores the supply."
+                      : a.autoAction === "valve-throttled"
+                        ? " The supply stays reduced until your provider restores full flow."
+                        : "";
             if (!window.confirm(`Mark this as normal water use? The alert will be closed and similar AI alerts pause for an hour.${valve}`)) return;
         }
         return run(
@@ -217,9 +224,14 @@ const Alerts = () => {
                                             </button>
                                         </div>
                                     )}
-                                    {burst && a.autoAction === "valve-closed" && a.status !== "resolved" && (
+                                    {a.autoAction === "valve-closed" && a.status !== "resolved" && (
                                         <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
                                             Your supply was automatically shut off. Contact your provider to restore it after checking for damage.
+                                        </p>
+                                    )}
+                                    {a.autoAction === "valve-throttled" && a.status !== "resolved" && (
+                                        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                            Your supply was automatically reduced to limit water loss. Fix the leak and mark it fixed, then your provider can restore full flow.
                                         </p>
                                     )}
                                 </div>

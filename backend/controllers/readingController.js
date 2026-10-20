@@ -16,7 +16,7 @@ const LOW_BALANCE_THROTTLE = 50;
 // Draw the sample's volume down against the device's active subscription and
 // enforce the PROVIDER GATE: throttle when the balance is low, close when it's
 // out or the plan has expired. Returns the (possibly updated) device.
-const enforceQuota = async (device, consumedVolume) => {
+export const enforceQuota = async (device, consumedVolume) => {
     const sub = await Subscription.findOne({ device: device._id, status: "active" });
     if (!sub) return device;
 
@@ -51,7 +51,7 @@ const enforceQuota = async (device, consumedVolume) => {
 
 // Postpaid: no balance to draw down — accrue the sample's volume onto the open
 // billing cycle, then enforce the gate against any overdue bills.
-const accruePostpaid = async (device, consumedVolume) => {
+export const accruePostpaid = async (device, consumedVolume) => {
     const bill = await getOrOpenBill(device);
     bill.volumeUsed += consumedVolume || 0;
     await bill.save();

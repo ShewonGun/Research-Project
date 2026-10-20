@@ -1,16 +1,16 @@
 /**
- * Switch the active postpaid tariff to the real NWSDB domestic tariff (or back).
+ * Make the real NWSDB domestic tariff the only postpaid tariff in the database.
  *
- *   node scripts/useNwsdbTariff.js            make NWSDB_DOMESTIC_2024 the active tariff
- *   node scripts/useNwsdbTariff.js --revert   re-activate the tariff that was active before
+ *   node scripts/useNwsdbTariff.js            activate NWSDB_DOMESTIC_2024 and DELETE every other tariff
+ *   node scripts/useNwsdbTariff.js --dry-run  show what would change, change nothing
  *   node scripts/useNwsdbTariff.js --show     print the active tariff, change nothing
  *
- * Nothing is deleted: the previous tariff is only marked inactive, so --revert restores it
- * exactly. Bills already closed keep their stored amounts; the new tariff prices open cycles,
- * live estimates, forecasts and future bill runs.
+ * Old tariffs (e.g. the early Rs 2/unit demo tariff) are removed. Bills already closed keep their
+ * stored amounts — they don't refer to a tariff — and the NWSDB tariff prices open cycles, live
+ * estimates, forecasts and future bill runs.
  *
- * The NWSDB tariff (models/Tariff.js) was derived from 2,098 real bills and reproduces 95 % of
- * water charges and 97.5 % of service charges to the rupee (check: node scripts/checkNwsdbTariff.js).
+ * The NWSDB tariff (models/Tariff.js) was derived from 2,098 real bills and reproduces 99.8 % of
+ * water charges and 100 % of service charges to the rupee (check: node scripts/checkNwsdbTariff.js).
  * Uses MONGODB_URI from .env.
  */
 import dotenv from "dotenv";
@@ -25,36 +25,39 @@ const describe = (t) =>
           `VAT ${Math.round((t.vatRate || 0) * 100)}%, pro-rata ${t.proRataDays || "off"}`
         : "(none)";
 
+const isNwsdb = (t) => t.name === NWSDB_DOMESTIC_2024.name;
+
 const main = async () => {
-    const mode = process.argv.includes("--revert") ? "revert" : process.argv.includes("--show") ? "show" : "apply";
+    const show = process.argv.includes("--show");
+    const dryRun = process.argv.includes("--dry-run");
     await mongoose.connect(process.env.MONGODB_URI);
     const active = await Tariff.findOne({ isActive: true }).sort({ updatedAt: -1 });
     console.log("Active now:", describe(active));
+    if (show) return;
 
-    if (mode === "apply") {
-        if (active?.name === NWSDB_DOMESTIC_2024.name) {
-            console.log("The NWSDB tariff is already active — nothing to do.");
-        } else {
-            await Tariff.updateMany({ isActive: true }, { $set: { isActive: false } });
-            const t = await Tariff.create({ ...NWSDB_DOMESTIC_2024, isActive: true });
-            console.log("Activated:", describe(t));
-            console.log("Previous tariff kept (inactive); undo with: node scripts/useNwsdbTariff.js --revert");
-        }
-    } else if (mode === "revert") {
-        const previous = await Tariff.findOne({ name: { $ne: NWSDB_DOMESTIC_2024.name } }).sort({ updatedAt: -1 });
-        if (!previous) {
-            console.log("No earlier tariff found — nothing to revert to.");
-        } else {
-            await Tariff.updateMany({ isActive: true }, { $set: { isActive: false } });
-            previous.isActive = true;
-            await previous.save();
-            console.log("Re-activated:", describe(previous));
-        }
+    const all = await Tariff.find().sort({ updatedAt: -1 });
+    const keep = active && isNwsdb(active) ? active : all.find(isNwsdb) || null;
+    const remove = all.filter((t) => !keep || !t._id.equals(keep._id));
+
+    console.log(keep ? `Keep: ${describe(keep)}` : "Create: the NWSDB tariff");
+    for (const t of remove) console.log(`Delete: ${describe(t)}${t.isActive ? " (active)" : ""}`);
+    if (dryRun) {
+        console.log("--dry-run: nothing changed.");
+        return;
     }
-    await mongoose.disconnect();
+
+    const nwsdb = keep || (await Tariff.create({ ...NWSDB_DOMESTIC_2024, isActive: true }));
+    if (!nwsdb.isActive) {
+        nwsdb.isActive = true;
+        await nwsdb.save();
+    }
+    if (remove.length) await Tariff.deleteMany({ _id: { $in: remove.map((t) => t._id) } });
+    console.log(`Done. Active: ${describe(nwsdb)}; ${remove.length} old tariff(s) deleted.`);
 };
 
-main().catch((e) => {
-    console.error("ERR", e.message);
-    process.exit(1);
-});
+main()
+    .catch((e) => {
+        console.error("ERR", e.message);
+        process.exitCode = 1;
+    })
+    .finally(() => mongoose.disconnect());
