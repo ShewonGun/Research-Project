@@ -4,8 +4,9 @@
 // balance or an overdue bill; the household tap (userValveState) can't be reopened while a leak
 // alert is open (safety lock).
 //
-// Returns { tone: "ok" | "warn" | "off", title, detail, action, covers } — `covers` lists the Home
-// page notices ("low", "overdue") the banner already explains, so they aren't shown twice.
+// Returns { tone: "ok" | "warn" | "off", title, detail, action, covers, dismissId } — `covers` lists the
+// Home page notices ("low", "overdue", "alerts") the banner already explains, so they aren't shown
+// twice; `dismissId` is the active alert the banner can dismiss (acknowledge) in their place.
 
 const openStatuses = ["active", "acknowledged"];
 const timeOf = (d) => new Date(d).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -16,7 +17,9 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
     const planActive = sub && sub.status === "active";
     const openAlerts = alerts.filter((a) => openStatuses.includes(a.status));
     const shutOff = openAlerts.find((a) => a.autoAction === "valve-closed");
-    const leak = openAlerts[0];
+    const unseen = openAlerts.filter((a) => a.status === "active"); // not yet dismissed
+    const leak = unseen[0];
+    const more = unseen.length > 1 ? ` (+${unseen.length - 1} more alert${unseen.length > 2 ? "s" : ""})` : "";
     const alertsLink = { label: "View alert", to: "/app/alerts" };
 
     if (device.adminValveState === "closed") {
@@ -26,7 +29,8 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
                 title: "Water is OFF: burst detected",
                 detail: `The supply was shut off automatically at ${timeOf(shutOff.startedAt || shutOff.createdAt)} to prevent flooding. Check your pipes, mark the leak fixed, then ask your provider to restore the supply.`,
                 action: alertsLink,
-                covers: [],
+                covers: ["alerts"],
+                dismissId: shutOff.status === "active" ? shutOff._id : null,
             };
         }
         if (!postpaid && !planActive) {
@@ -51,13 +55,15 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
     }
 
     if (device.userValveState === "closed") {
-        return leak
+        const open = openAlerts[0];
+        return open
             ? {
                   tone: "off",
                   title: "Water is OFF: you turned it off",
                   detail: "A leak alert is still open. Mark the leak fixed before turning the water back on.",
                   action: alertsLink,
-                  covers: [],
+                  covers: ["alerts"],
+                  dismissId: open.status === "active" ? open._id : null,
               }
             : { tone: "off", title: "Water is OFF: you turned it off", detail: "Turn it back on any time.", action: { label: "Turn water on", toggle: true }, covers: [] };
     }
@@ -83,9 +89,10 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
         return {
             tone: "warn",
             title: `Water is ON: possible ${leak.type === "burst" ? "burst" : "leak"}`,
-            detail: "Check taps, toilets and pipes. Turn the water off if you find a leak.",
+            detail: `${leak.message ? `${leak.message} ` : ""}Check taps, toilets and pipes, and turn the water off if you find a leak.${more}`,
             action: alertsLink,
-            covers: [],
+            covers: ["alerts"],
+            dismissId: leak._id,
         };
     }
 

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { FiCheckCircle, FiAlertTriangle, FiXOctagon, FiWifiOff } from "react-icons/fi";
+import { FiCheckCircle, FiAlertTriangle, FiXOctagon, FiWifiOff, FiLoader } from "react-icons/fi";
 
 const tones = {
     ok: {
@@ -28,8 +28,9 @@ const since = (d) => {
 };
 
 /* Supply status banner: ON / RESTRICTED / OFF, the reason and the one action that fixes it.
-   `status` comes from lib/supplyStatus.js; `onToggle` turns the household tap back on. */
-const SupplyBanner = ({ status, device, onToggle }) => {
+   `status` comes from lib/supplyStatus.js; `onToggle` turns the household tap back on and `onDismiss`
+   acknowledges the alert the banner is showing. */
+const SupplyBanner = ({ status, device, onToggle, onDismiss, dismissing = false }) => {
     const { box, Icon, icon } = tones[status.tone];
     const a = status.action;
     return (
@@ -46,6 +47,17 @@ const SupplyBanner = ({ status, device, onToggle }) => {
                     )}
                 </div>
             </div>
+            {status.dismissId && onDismiss && (
+                <button
+                    type="button"
+                    onClick={() => onDismiss(status.dismissId)}
+                    disabled={dismissing}
+                    className="inline-flex shrink-0 items-center justify-center gap-1 text-sm font-medium underline hover:no-underline disabled:opacity-50"
+                >
+                    {dismissing && <FiLoader className="h-3.5 w-3.5 animate-spin" />}
+                    Dismiss
+                </button>
+            )}
             {a?.to && (
                 <Link to={a.to} className={button}>
                     {a.label}
