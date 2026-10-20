@@ -12,6 +12,8 @@ import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterPulse from "../../Components/UserComponents/WaterPulse.jsx";
 import BalanceDrop from "../../Components/UserComponents/BalanceDrop.jsx";
 import LeakCard from "../../Components/UserComponents/LeakCard.jsx";
+import SupplyBanner from "../../Components/UserComponents/SupplyBanner.jsx";
+import { supplyStatus } from "../../lib/supplyStatus.js";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 
@@ -63,6 +65,10 @@ const Home = () => {
     const low = active && ratio < 0.1;
     const overdue = postpaid && (bills || []).some((b) => b.status === "overdue");
     const activeAlerts = (alerts || []).filter((a) => a.status === "active");
+    const supply = supplyStatus({ device, mode, sub, bills: bills || [], alerts: alerts || [] });
+    // The banner already explains these two, so their notices below aren't repeated.
+    const showLow = low && !supply.covers.includes("low");
+    const showOverdue = overdue && !supply.covers.includes("overdue");
     const today = usage?.daily?.find((d) => d.date === dayKey())?.volume || 0;
     const week = usage?.total || 0;
 
@@ -86,16 +92,18 @@ const Home = () => {
                 </span>
             </div>
 
-            {(low || overdue || activeAlerts.length > 0) && (
+            <SupplyBanner status={supply} device={device} onToggle={toggleValve} />
+
+            {(showLow || showOverdue || activeAlerts.length > 0) && (
                 <StaggerGrid className="mt-5 space-y-3">
-                    {low && (
+                    {showLow && (
                         <StaggerItem className="flex items-start gap-2 rounded-md bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                             <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>Your balance is low, so your water flow is being restricted. Top up to restore full flow.</span>
                         </StaggerItem>
                     )}
 
-                    {overdue && (
+                    {showOverdue && (
                         <StaggerItem className="flex items-start gap-2 rounded-md bg-red-50 px-3.5 py-2.5 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-300">
                             <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>
