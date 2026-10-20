@@ -1,5 +1,6 @@
 import Subscription from "../models/Subscription.js";
 import Bill from "../models/Bill.js";
+import { leakHoldsValve } from "./leakLock.js";
 
 // Guardrails that keep billing consistent across a prepaid ⇄ postpaid switch.
 //   → postpaid : blocked while a prepaid plan is still active.
@@ -28,8 +29,11 @@ export const billingModeBlocker = async (device, toMode) => {
 export const applyBillingMode = async (device, toMode) => {
     if (toMode === "postpaid") {
         device.billingMode = "postpaid";
-        device.adminValveState = "open";
-        device.throttlePercent = 100;
+        // Not while a leak alert holds the gate (restored after the leak is marked fixed).
+        if (!(await leakHoldsValve(device._id))) {
+            device.adminValveState = "open";
+            device.throttlePercent = 100;
+        }
     } else {
         await Bill.deleteMany({ device: device._id, status: "open" });
         device.billingMode = "prepaid";

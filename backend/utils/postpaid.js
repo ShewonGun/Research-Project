@@ -1,6 +1,7 @@
 import Bill from "../models/Bill.js";
 import { getActiveTariff } from "../models/Tariff.js";
 import { computeBill, periodDaysBetween } from "./computeBill.js";
+import { leakHoldsValve } from "./leakLock.js";
 
 // Postpaid enforcement policy.
 export const DUE_DAYS = 14; // days after cycle close before a bill is due
@@ -8,6 +9,7 @@ export const GRACE_DAYS = 7; // days a bill may stay overdue before disconnectio
 export const OVERDUE_THROTTLE = 30; // % flow allowed while overdue (drought-equity)
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const MIN_CYCLE_MS = DAY_MS; // shortest cycle closeCycle will bill
 
 // Find the device's running cycle, opening one if none exists yet.
 export const getOrOpenBill = async (device) => {
@@ -64,8 +66,10 @@ export const applyPostpaidEnforcement = async (device) => {
     return device;
 };
 
-// After a payment, restore supply if the device has no remaining dues.
+// After a payment, restore supply if the device has no remaining dues — unless a leak alert holds
+// the gate (it is restored after the leak is marked fixed).
 export const restoreIfClear = async (device) => {
+    if (await leakHoldsValve(device._id)) return device;
     const outstanding = await Bill.countDocuments({
         device: device._id,
         status: { $in: ["unpaid", "overdue"] },
@@ -83,6 +87,8 @@ export const restoreIfClear = async (device) => {
 export const closeCycle = async (device, tariff) => {
     const open = await Bill.findOne({ device: device._id, status: "open" });
     if (!open) return null;
+    // A cycle opened less than a day ago (e.g. billing run twice in a row) isn't billed yet.
+    if (Date.now() - new Date(open.periodStart).getTime() < MIN_CYCLE_MS) return null;
 
     const t = tariff || (await getActiveTariff());
     const now = new Date();

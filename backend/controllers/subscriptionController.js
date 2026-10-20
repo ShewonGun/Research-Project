@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Subscription from "../models/Subscription.js";
 import Device from "../models/Device.js";
 import WaterPackage from "../models/WaterPackage.js";
+import { leakHoldsValve } from "../utils/leakLock.js";
 
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { user: req.user._id });
 
@@ -44,10 +45,13 @@ export const purchaseSubscription = async (req, res) => {
         });
 
         // Start service: open the valve.
-        // Restore the provider gate; the household's own tap is left as-is.
-        device.adminValveState = "open";
-        device.throttlePercent = 100;
-        await device.save();
+        // Restore the provider gate; the household's own tap is left as-is. Not while a leak alert
+        // holds the gate — that is restored after the leak is marked fixed.
+        if (!(await leakHoldsValve(device._id))) {
+            device.adminValveState = "open";
+            device.throttlePercent = 100;
+            await device.save();
+        }
 
         return res.status(201).json({ subscription });
     } catch (error) {
