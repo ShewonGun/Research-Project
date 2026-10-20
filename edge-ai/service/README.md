@@ -16,6 +16,11 @@ raises / clears alerts (`source: "model"`) from the verdict. Unset = feature off
   now (latest reading >= 2 L/min and under 2 minutes old). Such an alert is never auto-resolved: someone must mark
   the leak fixed, after which the supply can be restored (the existing safety lock applies). Without the setting
   the 30 L/min rule is the only automatic shut-off, and it cannot fire on the loop's ~3.5 L/min pump.
+* **Opt-in micro-leak response:** `MODEL_LEAK_ACTION=throttle` reduces the provider gate to
+  `MODEL_LEAK_THROTTLE_PERCENT` (default 30 %) when the model raises a micro-leak alert; `MODEL_LEAK_ACTION=close`
+  shuts it. Either needs a score of at least `MODEL_LEAK_MIN_SCORE` (default 0.8) and water still flowing now
+  (latest reading > 0.05 L/min, under 2 minutes old). Like a burst shut-off, the alert is never auto-resolved: mark
+  the leak fixed, then restore the supply (admin Alerts → Reopen). Unset / `off` = alert only (default).
 * Trained at AquaFlow-loop scale (pump ≈ 3.5 L/min); flows are clamped to 6 L/min.
 * Validated on simulated data only (see `../leak_detection/results/REPORT.md`).
 

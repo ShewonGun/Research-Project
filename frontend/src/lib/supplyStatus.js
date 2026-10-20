@@ -17,6 +17,7 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
     const planActive = sub && sub.status === "active";
     const openAlerts = alerts.filter((a) => openStatuses.includes(a.status));
     const shutOff = openAlerts.find((a) => a.autoAction === "valve-closed");
+    const reduced = openAlerts.find((a) => a.autoAction === "valve-throttled"); // AI micro-leak response
     const unseen = openAlerts.filter((a) => a.status === "active"); // not yet dismissed
     const leak = unseen[0];
     const more = unseen.length > 1 ? ` (+${unseen.length - 1} more alert${unseen.length > 2 ? "s" : ""})` : "";
@@ -26,8 +27,10 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
         if (shutOff) {
             return {
                 tone: "off",
-                title: "Water is OFF: burst detected",
-                detail: `The supply was shut off automatically at ${timeOf(shutOff.startedAt || shutOff.createdAt)} to prevent flooding. Check your pipes, mark the leak fixed, then ask your provider to restore the supply.`,
+                title: shutOff.type === "burst" ? "Water is OFF: burst detected" : "Water is OFF: leak detected",
+                detail: `The supply was shut off automatically at ${timeOf(shutOff.startedAt || shutOff.createdAt)} to ${
+                    shutOff.type === "burst" ? "prevent flooding" : "limit water loss"
+                }. Check your pipes, mark the leak fixed, then ask your provider to restore the supply.`,
                 action: alertsLink,
                 covers: ["alerts"],
                 dismissId: shutOff.status === "active" ? shutOff._id : null,
@@ -70,6 +73,16 @@ export const supplyStatus = ({ device, mode, sub, bills = [], alerts = [] }) => 
 
     if (device.adminValveState === "throttled") {
         const pct = device.throttlePercent ?? 100;
+        if (reduced) {
+            return {
+                tone: "warn",
+                title: `Water is RESTRICTED to ${pct}%: leak detected`,
+                detail: `The supply was reduced automatically at ${timeOf(reduced.startedAt || reduced.createdAt)} to limit water loss. Find and fix the leak, mark it fixed, then ask your provider to restore full flow.`,
+                action: alertsLink,
+                covers: ["alerts"],
+                dismissId: reduced.status === "active" ? reduced._id : null,
+            };
+        }
         if (overdue) {
             return { tone: "warn", title: `Water is RESTRICTED to ${pct}%`, detail: "You have an overdue bill.", action: { label: "Pay now", to: "/app/billing" }, covers: ["overdue"] };
         }

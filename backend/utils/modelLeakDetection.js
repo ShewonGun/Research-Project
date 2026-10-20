@@ -17,6 +17,12 @@ import { emitAlertChanged, emitDeviceChanged } from "../config/socket.js";
 //     closing the valve after the flow already stopped would only cut water for no reason.
 // A shut-off alert is never auto-resolved: like the rule-based burst it must be marked fixed
 // by a person (the existing safety lock then lets the supply be restored).
+//
+// Micro-leaks: by default alert only. MODEL_LEAK_ACTION=throttle reduces the provider gate to
+// MODEL_LEAK_THROTTLE_PERCENT (default 30 %) — the proportional response for micro-leaks — and
+// MODEL_LEAK_ACTION=close shuts it. Either needs the micro-leak alarm active with a score of at least
+// MODEL_LEAK_MIN_SCORE (default 0.8) and water still flowing now (latest reading > 0.05 L/min and under
+// 2 minutes old). Like a burst shut-off, such an alert is never auto-resolved.
 // Off unless LEAK_MODEL_URL is set (e.g. http://localhost:8001).
 const HISTORY_MS = 12 * 60 * 60 * 1000;
 const SWEEP_EVERY_MS = 60 * 1000;
@@ -35,6 +41,38 @@ const shutoffMinScore = () => Number(process.env.MODEL_SHUTOFF_MIN_SCORE) || 0.7
 // Should this burst verdict close the valve? (pure — easy to test)
 export const shouldShutOff = ({ enabled, score, lastFlow, lastReadingAt, now = Date.now() }) =>
     enabled && score >= shutoffMinScore() && lastFlow >= SHUTOFF_MIN_FLOW_LPM && now - new Date(lastReadingAt).getTime() <= SHUTOFF_MAX_READING_AGE_MS;
+
+// Micro-leak response from the settings: "throttle" | "close" | null (pure — easy to test).
+export const leakAction = () => {
+    const v = String(process.env.MODEL_LEAK_ACTION || "off").toLowerCase();
+    return v === "throttle" || v === "close" ? v : null;
+};
+const leakMinScore = () => Number(process.env.MODEL_LEAK_MIN_SCORE) || 0.8;
+export const leakThrottlePercent = () => {
+    const p = Math.round(Number(process.env.MODEL_LEAK_THROTTLE_PERCENT));
+    return p >= 1 && p <= 99 ? p : 30;
+};
+const LEAK_MIN_FLOW_LPM = 0.05;
+export const shouldActOnLeak = ({ action, score, lastFlow, lastReadingAt, now = Date.now() }) =>
+    action && score >= leakMinScore() && lastFlow > LEAK_MIN_FLOW_LPM && now - new Date(lastReadingAt).getTime() <= SHUTOFF_MAX_READING_AGE_MS
+        ? action
+        : null;
+
+const VALVE_ACTIONS = ["valve-closed", "valve-throttled"];
+
+// Reduce the provider gate (never opens it, never raises an existing lower throttle).
+const throttleValve = async (device, percent) => {
+    if (device.adminValveState === "closed") return;
+    device.throttlePercent = device.adminValveState === "throttled" ? Math.min(device.throttlePercent ?? 100, percent) : percent;
+    device.adminValveState = "throttled";
+    await device.save();
+    emitDeviceChanged(device);
+};
+
+const leakActionMessage = (act, score) =>
+    `Leak detected by the AI model (confidence ${Math.round(score * 100)}%) — water has not stopped for far longer than normal use. ${
+        act === "close" ? "Supply was automatically shut off" : `Supply was automatically reduced to ${leakThrottlePercent()}%`
+    } to limit water loss until the leak is fixed.`;
 
 const closeValve = async (device) => {
     device.adminValveState = "closed";
@@ -92,9 +130,22 @@ export const scoreDevice = async (baseUrl, device) => {
         const open = await openModelAlert(device._id, type);
         const last = readings[readings.length - 1];
         const shut = type === "burst" && shouldShutOff({ enabled: autoShutoffEnabled(), score: v.score, lastFlow: last.flowRate, lastReadingAt: last.timestamp });
+        // What to do with the valve: bursts close it (MODEL_AUTO_SHUTOFF), micro-leaks per MODEL_LEAK_ACTION.
+        const act =
+            type === "burst"
+                ? shut
+                    ? "close"
+                    : null
+                : shouldActOnLeak({ action: leakAction(), score: v.score, lastFlow: last.flowRate, lastReadingAt: last.timestamp });
+        const applyAction = async () => {
+            if (act === "close") await closeValve(device);
+            else if (act === "throttle") await throttleValve(device, leakThrottlePercent());
+        };
+        const actionMessage = () => (type === "burst" ? burstShutoffMessage(v.score) : leakActionMessage(act, v.score));
+        const autoActionOf = () => (act === "close" ? "valve-closed" : act === "throttle" ? "valve-throttled" : null);
         if (v.active && !open) {
             if (await snoozed(device._id, type)) continue;
-            if (shut) await closeValve(device);
+            await applyAction();
             await Alert.create({
                 device: device._id,
                 user: device.owner,
@@ -102,19 +153,19 @@ export const scoreDevice = async (baseUrl, device) => {
                 severity: type === "burst" ? "critical" : "warning",
                 source: "model",
                 flowRate: last.flowRate,
-                message: shut ? burstShutoffMessage(v.score) : `${MESSAGE[type]} (confidence ${Math.round(v.score * 100)}%)`,
-                autoAction: shut ? "valve-closed" : null,
+                message: act ? actionMessage() : `${MESSAGE[type]} (confidence ${Math.round(v.score * 100)}%)`,
+                autoAction: autoActionOf(),
                 startedAt: new Date(),
             });
             emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
-        } else if (v.active && open && shut && open.autoAction !== "valve-closed") {
-            // An alert-only burst became confident enough (or the setting was switched on): escalate.
-            await closeValve(device);
-            open.autoAction = "valve-closed";
-            open.message = burstShutoffMessage(v.score);
+        } else if (v.active && open && act && !VALVE_ACTIONS.includes(open.autoAction)) {
+            // An alert-only burst / leak became confident enough (or the setting was switched on): escalate.
+            await applyAction();
+            open.autoAction = autoActionOf();
+            open.message = actionMessage();
             await open.save();
             emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
-        } else if (!v.active && open && open.autoAction !== "valve-closed") {
+        } else if (!v.active && open && !VALVE_ACTIONS.includes(open.autoAction)) {
             open.status = "resolved";
             open.resolvedAt = new Date();
             open.autoAction = "auto-resolved";
