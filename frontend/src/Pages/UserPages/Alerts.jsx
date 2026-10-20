@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from "react-icons/fi";
+import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield, FiInfo } from "react-icons/fi";
 import { apiFetch } from "../../lib/api.js";
 import { connectSocket } from "../../lib/socket.js";
 import { useMyWater } from "../../Context/MyWaterContext.jsx";
@@ -7,6 +7,7 @@ import { useToast } from "../../Context/ToastContext.jsx";
 import NoDevice from "../../Components/UserComponents/NoDevice.jsx";
 import WaterLoader from "../../Components/SharedComponents/WaterLoader.jsx";
 import Pagination from "../../Components/SharedComponents/Pagination.jsx";
+import AlertExplanation from "../../Components/SharedComponents/AlertExplanation.jsx";
 
 const PAGE_SIZE = 5;
 
@@ -41,6 +42,7 @@ const Alerts = () => {
     const [filter, setFilter] = useState("open");
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const [explained, setExplained] = useState(null); // id of the alert whose "Why?" is open
     const lastLoadAt = useRef(0);
     const deviceId = device?._id;
 
@@ -169,7 +171,17 @@ const Alerts = () => {
                                     <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
                                         {a.flowRate != null && `${a.flowRate.toFixed(1)} L/min · `}
                                         {relativeTime(a.createdAt)}
+                                        {" · "}
+                                        <button
+                                            type="button"
+                                            onClick={() => setExplained(explained === a._id ? null : a._id)}
+                                            className="inline-flex items-center gap-1 font-medium text-sky-600 hover:underline dark:text-sky-400"
+                                        >
+                                            <FiInfo className="h-3 w-3" />
+                                            {explained === a._id ? "Hide" : "Why?"}
+                                        </button>
                                     </p>
+                                    {explained === a._id && <AlertExplanation alertId={a._id} />}
                                     {burst && a.autoAction === "valve-closed" && a.status !== "resolved" && (
                                         <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
                                             Your supply was automatically shut off. Contact your provider to restore it after checking for damage.

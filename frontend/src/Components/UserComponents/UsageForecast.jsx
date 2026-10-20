@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FiTrendingUp, FiClock, FiFileText, FiInfo, FiCloudRain, FiSun, FiCalendar } from "react-icons/fi";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ErrorBar, ResponsiveContainer } from "recharts";
+import { ComposedChart, Bar, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { apiFetch } from "../../lib/api.js";
 import { browserTimeZone } from "../../lib/dayKey.js";
 import { useChartTheme } from "../SharedComponents/chartTheme.js";
@@ -60,16 +60,25 @@ const UsageForecast = ({ deviceId, fallback }) => {
         );
     }
 
-    const rows = data.forecast.map((f, i) => ({
-        label: i === 0 ? "Today" : dayLabel(f.day),
-        litres: f.litres,
-        err: [Math.max(0, f.litres - f.low), Math.max(0, f.high - f.litres)],
-        low: f.low,
-        high: f.high,
-        tmax: f.tmax,
-        rainMm: f.rainMm,
-        holiday: f.holiday,
-    }));
+    // Last 7 measured days (bars), then the forecast (line) with its 80 % range (shaded band).
+    // The line starts at the last measured day so the two join up.
+    const past = (data.history || []).slice(-7).map((h) => ({ label: dayLabel(h.day), actual: h.litres }));
+    if (past.length) past[past.length - 1].litres = past[past.length - 1].actual;
+    const rows = [
+        ...past,
+        ...data.forecast.map((f, i) => ({
+            label: i === 0 ? "Today" : dayLabel(f.day),
+            litres: f.litres,
+            range: [f.low, f.high],
+            low: f.low,
+            high: f.high,
+            tmax: f.tmax,
+            rainMm: f.rainMm,
+            holiday: f.holiday,
+        })),
+    ].map((r, i) => ({ ...r, i }));
+    // Day names repeat across two weeks, so the axis runs on the row index; every other day is labelled, counting from today.
+    const ticks = rows.filter((r) => (r.i - past.length) % 2 === 0).map((r) => r.i);
     // Days worth pointing out: public holidays, heavy rain, very hot days.
     const notable = data.forecast
         .map((f, i) => ({ f, i }))
@@ -88,27 +97,39 @@ const UsageForecast = ({ deviceId, fallback }) => {
     return card(
         <>
             <div className="mt-3 flex items-baseline justify-between">
-                <span className="text-xs text-slate-400 dark:text-slate-500">Next 7 days (with 80% range)</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{past.length ? "Last 7 days measured, next 7 forecast" : "Next 7 days"} (shaded: 80% range)</span>
                 <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{weekTotal.toFixed(0)} L expected</span>
             </div>
-            <ResponsiveContainer width="100%" height={130} className="mt-2">
-                <BarChart data={rows} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: t.tick }} tickLine={false} axisLine={false} interval={0} />
+            <ResponsiveContainer width="100%" height={150} className="mt-2">
+                <ComposedChart data={rows} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="i" ticks={ticks} interval={0} tickFormatter={(i) => rows[i]?.label ?? ""} tick={{ fontSize: 10, fill: t.tick }} tickLine={false} axisLine={false} />
                     <YAxis hide domain={[0, "auto"]} />
                     <Tooltip
                         cursor={{ fill: t.grid }}
-                        formatter={(v, _n, p) => [
-                            `${Number(v).toFixed(0)} L (range ${p.payload.low.toFixed(0)}–${p.payload.high.toFixed(0)})${
-                                p.payload.tmax != null ? ` · ${Math.round(p.payload.tmax)}°C, ${p.payload.rainMm.toFixed(0)} mm rain` : ""
-                            }${p.payload.holiday ? ` · ${p.payload.holiday}` : ""}`,
-                            "Forecast",
-                        ]}
-                        {...t.tooltip}
+                        content={({ active, payload }) => {
+                            const p = active && payload?.[0]?.payload;
+                            if (!p) return null;
+                            const forecast = p.low != null;
+                            return (
+                                <div style={t.tooltip.contentStyle}>
+                                    <p style={t.tooltip.labelStyle}>{p.label}</p>
+                                    <p style={t.tooltip.itemStyle}>
+                                        {forecast
+                                            ? `Forecast ${p.litres.toFixed(0)} L (range ${p.low.toFixed(0)}–${p.high.toFixed(0)})`
+                                            : `Measured ${p.actual.toFixed(0)} L`}
+                                    </p>
+                                    {forecast && p.tmax != null && (
+                                        <p style={t.tooltip.itemStyle}>{`${Math.round(p.tmax)}°C, ${p.rainMm.toFixed(0)} mm rain`}</p>
+                                    )}
+                                    {forecast && p.holiday && <p style={t.tooltip.itemStyle}>{p.holiday}</p>}
+                                </div>
+                            );
+                        }}
                     />
-                    <Bar dataKey="litres" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={28}>
-                        <ErrorBar dataKey="err" width={4} strokeWidth={1.5} stroke={t.tick} />
-                    </Bar>
-                </BarChart>
+                    <Bar dataKey="actual" fill={t.dark ? "#334155" : "#cbd5e1"} radius={[3, 3, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+                    <Area dataKey="range" stroke="none" fill="#0ea5e9" fillOpacity={0.18} isAnimationActive={false} connectNulls />
+                    <Line dataKey="litres" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 2.5, fill: "#0ea5e9" }} isAnimationActive={false} connectNulls />
+                </ComposedChart>
             </ResponsiveContainer>
 
             {notable.length > 0 && (
