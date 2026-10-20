@@ -2,6 +2,7 @@ import Device from "../models/Device.js";
 import Reading from "../models/Reading.js";
 import Alert from "../models/Alert.js";
 import { emitAlertChanged, emitDeviceChanged } from "../config/socket.js";
+import { VALVE_ACTIONS } from "./leakLock.js";
 
 // ML leak detector (edge-ai/service). Once a minute, for every online device, send the
 // last HISTORY_MS of readings to the Python model service and raise / clear alerts from
@@ -58,7 +59,6 @@ export const shouldActOnLeak = ({ action, score, lastFlow, lastReadingAt, now = 
         ? action
         : null;
 
-const VALVE_ACTIONS = ["valve-closed", "valve-throttled"];
 
 // Reduce the provider gate (never opens it, never raises an existing lower throttle).
 const throttleValve = async (device, percent) => {
@@ -100,6 +100,26 @@ export const snoozeQuery = (deviceId, type, now = Date.now()) => ({
     "userFeedback.at": { $gte: new Date(now - snoozeMinutes() * 60 * 1000) },
 });
 const snoozed = async (deviceId, type) => snoozeMinutes() > 0 && !!(await Alert.exists(snoozeQuery(deviceId, type)));
+
+// After a person marks a model alert fixed (or answers it), the model service still reports the
+// alarm as active for its latch time (LATCH_MIN = 10 min in edge-ai/service/app.py). Raising a new
+// alert then would be a duplicate — and would block restoring the supply (safety lock) — so the same
+// type isn't raised again on that device within ALERT_RESOLVED_GRACE_MIN minutes (default 12) of a
+// person resolving one. A leak that really continues is raised again after that.
+export const resolvedGraceMinutes = () => {
+    const raw = process.env.ALERT_RESOLVED_GRACE_MIN;
+    const v = Number(raw);
+    return raw !== undefined && raw !== "" && Number.isFinite(v) && v >= 0 ? v : 12;
+};
+export const recentlyResolvedQuery = (deviceId, type, now = Date.now()) => ({
+    device: deviceId,
+    type,
+    source: "model",
+    status: "resolved",
+    autoAction: { $ne: "auto-resolved" }, // resolved by a person, not cleared by the detector
+    resolvedAt: { $gte: new Date(now - resolvedGraceMinutes() * 60 * 1000) },
+});
+const recentlyResolved = async (deviceId, type) => resolvedGraceMinutes() > 0 && !!(await Alert.exists(recentlyResolvedQuery(deviceId, type)));
 
 const openModelAlert = (deviceId, type) =>
     Alert.findOne({ device: deviceId, type, source: "model", status: { $in: ["active", "acknowledged"] } });
@@ -144,7 +164,7 @@ export const scoreDevice = async (baseUrl, device) => {
         const actionMessage = () => (type === "burst" ? burstShutoffMessage(v.score) : leakActionMessage(act, v.score));
         const autoActionOf = () => (act === "close" ? "valve-closed" : act === "throttle" ? "valve-throttled" : null);
         if (v.active && !open) {
-            if (await snoozed(device._id, type)) continue;
+            if ((await snoozed(device._id, type)) || (await recentlyResolved(device._id, type))) continue;
             await applyAction();
             await Alert.create({
                 device: device._id,
@@ -165,7 +185,8 @@ export const scoreDevice = async (baseUrl, device) => {
             open.message = actionMessage();
             await open.save();
             emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
-        } else if (!v.active && open && !VALVE_ACTIONS.includes(open.autoAction)) {
+        } else if (!v.active && open && !VALVE_ACTIONS.includes(open.autoAction) && open.userFeedback?.label !== "real-leak") {
+            // (A leak the household confirmed stays open until someone marks it fixed.)
             open.status = "resolved";
             open.resolvedAt = new Date();
             open.autoAction = "auto-resolved";

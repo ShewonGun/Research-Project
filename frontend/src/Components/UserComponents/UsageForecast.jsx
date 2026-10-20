@@ -79,8 +79,9 @@ const UsageForecast = ({ deviceId, fallback }) => {
     ].map((r, i) => ({ ...r, i }));
     // Day names repeat across two weeks, so the axis runs on the row index; every other day is labelled, counting from today.
     const ticks = rows.filter((r) => (r.i - past.length) % 2 === 0).map((r) => r.i);
-    // Days worth pointing out: public holidays, heavy rain, very hot days.
-    const notable = data.forecast
+    // Days worth pointing out: public holidays, heavy rain, very hot days — only when the forecast
+    // actually used weather and holidays (the default model doesn't, so it would only mislead).
+    const notable = (data.usedCalendar ? data.forecast : [])
         .map((f, i) => ({ f, i }))
         .filter(({ f }) => f.holiday || f.rainMm >= 10 || f.tmax >= 32)
         .map(({ f, i }) => {
@@ -118,10 +119,10 @@ const UsageForecast = ({ deviceId, fallback }) => {
                                             ? `Forecast ${p.litres.toFixed(0)} L (range ${p.low.toFixed(0)}–${p.high.toFixed(0)})`
                                             : `Measured ${p.actual.toFixed(0)} L`}
                                     </p>
-                                    {forecast && p.tmax != null && (
+                                    {forecast && data.usedCalendar && p.tmax != null && (
                                         <p style={t.tooltip.itemStyle}>{`${Math.round(p.tmax)}°C, ${p.rainMm.toFixed(0)} mm rain`}</p>
                                     )}
-                                    {forecast && p.holiday && <p style={t.tooltip.itemStyle}>{p.holiday}</p>}
+                                    {forecast && data.usedCalendar && p.holiday && <p style={t.tooltip.itemStyle}>{p.holiday}</p>}
                                 </div>
                             );
                         }}

@@ -29,6 +29,12 @@ raises / clears alerts (`source: "model"`) from the verdict. Unset = feature off
   shuts it. Either needs a score of at least `MODEL_LEAK_MIN_SCORE` (default 0.8) and water still flowing now
   (latest reading > 0.05 L/min, under 2 minutes old). Like a burst shut-off, the alert is never auto-resolved: mark
   the leak fixed, then restore the supply (admin Alerts → Reopen). Unset / `off` = alert only (default).
+* While a leak alert that closed or throttled the gate is open, buying a plan, paying a bill or switching to
+  postpaid does not reopen the gate; it is restored after the leak is marked fixed.
+* After a person resolves an AI alert, the same type isn't raised again on that device for
+  `ALERT_RESOLVED_GRACE_MIN` minutes (default 12; the model keeps an alarm latched for 10). After "It was me",
+  AI alerts of that type pause for `ALERT_SNOOZE_MIN` (default 60). A leak the household confirmed ("Yes, a
+  leak") stays open until it is marked fixed.
 * Trained at AquaFlow-loop scale (pump ≈ 3.5 L/min); flows are clamped to 6 L/min.
 * Validated on simulated data only (see `../leak_detection/results_calibrated_100/REPORT.md`).
 
