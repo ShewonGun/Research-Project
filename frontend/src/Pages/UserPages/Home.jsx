@@ -69,6 +69,7 @@ const Home = () => {
     // The banner already explains these two, so their notices below aren't repeated.
     const showLow = low && !supply.covers.includes("low");
     const showOverdue = overdue && !supply.covers.includes("overdue");
+    const shownAlerts = supply.covers.includes("alerts") ? [] : activeAlerts;
     const today = usage?.daily?.find((d) => d.date === dayKey())?.volume || 0;
     const week = usage?.total || 0;
 
@@ -92,9 +93,15 @@ const Home = () => {
                 </span>
             </div>
 
-            <SupplyBanner status={supply} device={device} onToggle={toggleValve} />
+            <SupplyBanner
+                status={supply}
+                device={device}
+                onToggle={toggleValve}
+                onDismiss={dismissAlert}
+                dismissing={!!supply.dismissId && dismissing.has(supply.dismissId)}
+            />
 
-            {(showLow || showOverdue || activeAlerts.length > 0) && (
+            {(showLow || showOverdue || shownAlerts.length > 0) && (
                 <StaggerGrid className="mt-5 space-y-3">
                     {showLow && (
                         <StaggerItem className="flex items-start gap-2 rounded-md bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -114,7 +121,7 @@ const Home = () => {
                     )}
 
                     {/* Leak / burst alerts */}
-                    {activeAlerts.map((a) => (
+                    {shownAlerts.map((a) => (
                         <StaggerItem
                             key={a._id}
                             className={`flex items-start gap-2 rounded-md px-3.5 py-2.5 text-sm ${
