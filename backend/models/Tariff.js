@@ -62,16 +62,16 @@ const tariffSchema = new mongoose.Schema(
 
 const Tariff = mongoose.model("Tariff", tariffSchema);
 
-// Return the active tariff, seeding a default one on first use.
+// The active tariff; a database without one starts on the real NWSDB domestic tariff.
 export const getActiveTariff = async () => {
     let tariff = await Tariff.findOne({ isActive: true }).sort({ updatedAt: -1 });
-    if (!tariff) tariff = await Tariff.create({});
+    if (!tariff) tariff = await Tariff.create({ ...NWSDB_DOMESTIC_2024, isActive: true });
     return tariff;
 };
 
 // NWSDB domestic tariff in force since ~Oct 2024, derived from 2,098 real bills
-// (edge-ai/data/nwsdb): reproduces 95 % of water charges and 97.5 % of service charges to the
-// rupee. Per 30 days, pro-rated to the billing period; VAT 18 %. Apply it with
+// (edge-ai/data/nwsdb): reproduces 99.8 % of water charges and 100 % of service charges to the
+// rupee (node scripts/checkNwsdbTariff.js). Per 30 days, pro-rated to the billing period; VAT 18 %. Apply it with
 // `node scripts/useNwsdbTariff.js` (and `--revert` to go back).
 export const NWSDB_DOMESTIC_2024 = {
     name: "NWSDB Domestic (from Oct 2024)",
