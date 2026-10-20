@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Bill from "../models/Bill.js";
 import Device from "../models/Device.js";
 import { getActiveTariff } from "../models/Tariff.js";
-import { computeBill, runningPeriodDays } from "../utils/computeBill.js";
+import { liveEstimate, runningPeriodDays } from "../utils/computeBill.js";
 import { getOrOpenBill, closeCycle, restoreIfClear } from "../utils/postpaid.js";
 
 const ownershipFilter = (req) => (req.user.role === "admin" ? {} : { user: req.user._id });
@@ -27,7 +27,7 @@ export const getCurrentBill = async (req, res) => {
 
         const bill = await getOrOpenBill(device);
         const tariff = await getActiveTariff();
-        const estimate = computeBill(bill.volumeUsed, tariff, { periodDays: runningPeriodDays(bill.periodStart) });
+        const estimate = liveEstimate(bill.volumeUsed, tariff, { periodDays: runningPeriodDays(bill.periodStart) });
 
         return res.json({ bill, estimate, tariff });
     } catch (error) {
