@@ -8,6 +8,7 @@ import StatTile from "../../Components/SharedComponents/StatTile.jsx";
 import SearchInput from "../../Components/SharedComponents/SearchInput.jsx";
 import { StaggerGrid, StaggerItem } from "../../Components/SharedComponents/Motion.jsx";
 import { useToast } from "../../Context/ToastContext.jsx";
+import AlertDetailModal from "../../Components/AdminComponents/AlertDetailModal.jsx";
 
 const PAGE_SIZE = 5;
 
@@ -74,6 +75,8 @@ const Alerts = () => {
     const [loading, setLoading] = useState(true);
     const [pending, setPending] = useState(() => new Set());
     const lastLoadAt = useRef(0);
+    const [selectedId, setSelectedId] = useState(null); // alert shown in the detail modal
+    const closeDetails = useCallback(() => setSelectedId(null), []);
 
     useEffect(() => setPage(1), [filter, source, search]);
 
@@ -132,6 +135,12 @@ const Alerts = () => {
         .filter((a) => source === "all" || (a.source || "rules") === source)
         .filter((a) => !q || [a.device?.name, a.device?.deviceId, a.type].some((v) => v?.toLowerCase().includes(q)));
     const paged = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const selected = alerts.find((a) => a._id === selectedId) || null; // follows reloads, so the modal stays current
+    const openDetails = (id) => (e) => {
+        if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        setSelectedId(id);
+    };
     const activeCount = alerts.filter((a) => a.status === "active").length;
     const resolvedCount = alerts.filter((a) => a.status === "resolved").length;
 
@@ -206,7 +215,14 @@ const Alerts = () => {
                     {paged.map((a) => {
                         const burst = a.type === "burst";
                         return (
-                            <div key={a._id} className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <div
+                                key={a._id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={openDetails(a._id)}
+                                onKeyDown={openDetails(a._id)}
+                                className="cursor-pointer rounded-sm border border-slate-200 bg-white p-4 transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+                            >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex min-w-0 items-center gap-2.5">
                                         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${severityChip[a.severity]}`}>
@@ -239,7 +255,7 @@ const Alerts = () => {
                                 </div>
 
                                 {(a.status === "active" || a.status !== "resolved" || (["valve-closed", "valve-throttled"].includes(a.autoAction) && a.device?._id)) && (
-                                    <div className="mt-3 flex items-center justify-end gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                                    <div className="mt-3 flex items-center justify-end gap-4 border-t border-slate-100 pt-3 dark:border-slate-800" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                                         {a.status === "active" && (
                                             <button
                                                 type="button"
@@ -297,7 +313,14 @@ const Alerts = () => {
                             {paged.map((a) => {
                                 const burst = a.type === "burst";
                                 return (
-                                    <tr key={a._id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
+                                    <tr
+                                        key={a._id}
+                                        tabIndex={0}
+                                        onClick={openDetails(a._id)}
+                                        onKeyDown={openDetails(a._id)}
+                                        title="Show details"
+                                        className="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                                    >
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2.5">
                                                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${severityChip[a.severity]}`}>
@@ -322,7 +345,7 @@ const Alerts = () => {
                                                 {a.status}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-end gap-3">
                                                 {a.status === "active" && (
                                                     <button
@@ -370,6 +393,15 @@ const Alerts = () => {
             )}
 
             <Pagination page={page} pageSize={PAGE_SIZE} total={shown.length} onChange={setPage} />
+
+            <AlertDetailModal
+                alert={selected}
+                onClose={closeDetails}
+                onAcknowledge={acknowledge}
+                onResolve={resolve}
+                onReopen={reopen}
+                pending={pending}
+            />
         </div>
     );
 };
