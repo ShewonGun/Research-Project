@@ -360,7 +360,6 @@ const Alerts = () => {
                 onClose={closeDetails}
                 onAcknowledge={acknowledge}
                 onResolve={resolve}
-                onReopen={reopen}
                 pending={pending}
             />
         </div>
