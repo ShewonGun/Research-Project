@@ -110,3 +110,12 @@ test("a leak the household confirmed is not auto-resolved when the alarm goes qu
     assert.equal(plain.status, "resolved", "an unanswered alert still clears itself as before");
     assert.equal(plain.autoAction, "auto-resolved");
 });
+
+test("an alert stays open while the score is still high, even if a dip restarted the alarm's count", async () => {
+    const open = { status: "active", autoAction: null, saved: 0, async save() { this.saved++; } };
+    await sweep({ verdict: { micro_leak: { active: false, score: 0.99, threshold: 0.9 } }, open });
+    assert.equal(open.status, "active");
+    assert.equal(open.saved, 0);
+    await sweep({ verdict: { micro_leak: { active: false, score: 0.2, threshold: 0.9 } }, open });
+    assert.equal(open.status, "resolved", "once the score drops it clears as before");
+});
