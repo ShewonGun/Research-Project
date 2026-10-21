@@ -306,7 +306,6 @@ const Alerts = () => {
                                 <th className="px-4 py-2.5 font-medium">Flow</th>
                                 <th className="px-4 py-2.5 font-medium">Detected</th>
                                 <th className="px-4 py-2.5 font-medium">Status</th>
-                                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -345,44 +344,6 @@ const Alerts = () => {
                                                 {a.status}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                                            <div className="flex items-center justify-end gap-3">
-                                                {a.status === "active" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => acknowledge(a._id)}
-                                                        disabled={pending.has(`ack-${a._id}`)}
-                                                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 transition hover:text-slate-900 disabled:opacity-50 dark:text-slate-300 dark:hover:text-white"
-                                                    >
-                                                        {pending.has(`ack-${a._id}`) && <FiLoader className="h-3 w-3 animate-spin" />}
-                                                        Acknowledge
-                                                    </button>
-                                                )}
-                                                {a.status !== "resolved" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => resolve(a._id)}
-                                                        disabled={pending.has(`res-${a._id}`)}
-                                                        className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 transition hover:text-emerald-500 disabled:opacity-50 dark:text-emerald-400"
-                                                    >
-                                                        {pending.has(`res-${a._id}`) && <FiLoader className="h-3 w-3 animate-spin" />}
-                                                        Resolve
-                                                    </button>
-                                                )}
-                                                {["valve-closed", "valve-throttled"].includes(a.autoAction) && a.status === "resolved" && a.device?._id && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => reopen(a.device._id)}
-                                                        disabled={pending.has(`reopen-${a.device._id}`)}
-                                                        title="Restore supply after inspecting"
-                                                        className="flex items-center gap-1.5 text-xs font-medium text-sky-600 transition hover:text-sky-500 disabled:opacity-50 dark:text-sky-400"
-                                                    >
-                                                        {pending.has(`reopen-${a.device._id}`) && <FiLoader className="h-3 w-3 animate-spin" />}
-                                                        Reopen
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
                                     </tr>
                                 );
                             })}
@@ -399,7 +360,6 @@ const Alerts = () => {
                 onClose={closeDetails}
                 onAcknowledge={acknowledge}
                 onResolve={resolve}
-                onReopen={reopen}
                 pending={pending}
             />
         </div>

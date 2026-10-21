@@ -61,8 +61,8 @@ const Section = ({ title, children }) => (
 
 /* Full details of one leak alert for the admin: what was detected, on which device, what the system
    did, the household's answer, the timeline, and the flow around it (the same "Why?" view households see).
-   Actions are the Alerts page's own (acknowledge / resolve / reopen), passed in. */
-const AlertDetailModal = ({ alert, onClose, onAcknowledge, onResolve, onReopen, pending }) => {
+   Actions are the Alerts page's own (acknowledge / resolve), passed in. */
+const AlertDetailModal = ({ alert, onClose, onAcknowledge, onResolve, pending }) => {
     const open = !!alert;
     const panelRef = useModalDismiss(open, onClose);
 
@@ -90,7 +90,7 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, onResolve, onReopen, 
                         exit={{ opacity: 0, scale: 0.97, y: 8 }}
                         transition={{ duration: 0.2, ease: "easeOut" }}
                     >
-                        <Body alert={alert} onClose={onClose} onAcknowledge={onAcknowledge} onResolve={onResolve} onReopen={onReopen} pending={pending} />
+                        <Body alert={alert} onClose={onClose} onAcknowledge={onAcknowledge} onResolve={onResolve} pending={pending} />
                     </motion.div>
                 </motion.div>
             )}
@@ -98,12 +98,11 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, onResolve, onReopen, 
     );
 };
 
-const Body = ({ alert: a, onClose, onAcknowledge, onResolve, onReopen, pending }) => {
+const Body = ({ alert: a, onClose, onAcknowledge, onResolve, pending }) => {
     const burst = a.type === "burst";
     const action = actionInfo[a.autoAction];
     const fb = a.userFeedback;
     const started = a.startedAt || a.createdAt;
-    const canReopen = ["valve-closed", "valve-throttled"].includes(a.autoAction) && a.status === "resolved" && a.device?._id;
     const busy = (key) => pending?.has(key);
 
     const timeline = [
@@ -209,7 +208,7 @@ const Body = ({ alert: a, onClose, onAcknowledge, onResolve, onReopen, pending }
                 <AlertExplanation alertId={a._id} />
 
                 {/* Actions */}
-                {(a.status !== "resolved" || canReopen) && (
+                {a.status !== "resolved" && (
                     <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
                         {a.status === "active" && (
                             <button
@@ -231,17 +230,6 @@ const Body = ({ alert: a, onClose, onAcknowledge, onResolve, onReopen, pending }
                             >
                                 {busy(`res-${a._id}`) && <FiLoader className="h-3 w-3 animate-spin" />}
                                 Resolve
-                            </button>
-                        )}
-                        {canReopen && (
-                            <button
-                                type="button"
-                                onClick={() => onReopen(a.device._id)}
-                                disabled={busy(`reopen-${a.device._id}`)}
-                                className="flex items-center gap-1.5 rounded-sm bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
-                            >
-                                {busy(`reopen-${a.device._id}`) && <FiLoader className="h-3 w-3 animate-spin" />}
-                                Reopen supply
                             </button>
                         )}
                     </div>
