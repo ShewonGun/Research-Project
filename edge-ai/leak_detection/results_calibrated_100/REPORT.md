@@ -35,4 +35,6 @@ steady_leak      117    117              17.0    1.00
 ## Final model on other data
 - **original single-household dataset**: micro-leaks 3/3, bursts 2/2, false alarms/day 0.00
 
-Final alarm settings (threshold, minutes): {"micro_leak": [0.9, 15], "burst": [0.8, 15]}
+Final alarm settings of the saved model (threshold, minutes): {"micro_leak": [0.9, 10], "burst": [0.7, 15]}
+
+(The saved leak_model.joblib was rebuilt for numpy 1.26 after this report was written; the rebuild re-tuned the final alarms on the same tuning households, from {"micro_leak": [0.9, 15], "burst": [0.8, 15]}. The cross-validation results above are unchanged: each fold tunes its own alarms. `GET /health` on the model service shows the values in use.)

@@ -3,10 +3,10 @@
   "final_alarms": {
     "micro_leak": [
       0.9,
-      15
+      10
     ],
     "burst": [
-      0.8,
+      0.7,
       15
     ]
   },
