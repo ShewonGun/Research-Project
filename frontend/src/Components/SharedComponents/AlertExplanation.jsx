@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FiActivity, FiCpu, FiDroplet, FiClock } from "react-icons/fi";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceArea, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer } from "recharts";
 import { apiFetch } from "../../lib/api.js";
 import { useChartTheme } from "./chartTheme.js";
 
@@ -51,9 +51,10 @@ const AlertExplanation = ({ alertId }) => {
 
     const burst = data.type === "burst";
     const shade = burst ? "#ef4444" : "#f59e0b";
-    const start = new Date(data.window.start).getTime();
-    const end = new Date(data.window.to).getTime();
     const f = data.facts;
+    const start = new Date(data.window.start).getTime(); // when the alert was raised
+    // When the water stopped behaving normally: the start of the non-stop run that led to the alert.
+    const since = f.nonStopMinutesAtAlert >= 2 ? start - (f.nonStopMinutesAtAlert - 1) * 60000 : null;
 
     return box(
         <>
@@ -69,13 +70,15 @@ const AlertExplanation = ({ alertId }) => {
                     <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={clock}
                         tick={{ fontSize: 10, fill: t.tick }} tickLine={false} axisLine={false} minTickGap={40} />
                     <YAxis width={28} domain={[0, (max) => Math.max(1, Math.ceil(max))]} allowDecimals={false} tick={{ fontSize: 10, fill: t.tick }} tickLine={false} axisLine={false} />
-                    <ReferenceArea x1={start} x2={Math.max(end, start + 60000)} fill={shade} fillOpacity={0.12} ifOverflow="extendDomain" />
+                    {since != null && <ReferenceArea x1={since} x2={start} fill={shade} fillOpacity={0.12} ifOverflow="extendDomain" />}
+                    <ReferenceLine x={start} stroke={shade} strokeWidth={1.5} strokeDasharray="4 3" ifOverflow="extendDomain" />
                     <Tooltip labelFormatter={clock} formatter={(v) => [`${Number(v).toFixed(2)} L/min`, "Flow"]} {...t.tooltip} />
                     <Area type="stepAfter" dataKey="flow" stroke="#0ea5e9" fill="#0ea5e9" fillOpacity={0.15} strokeWidth={1.5} isAnimationActive={false} />
                 </AreaChart>
             </ResponsiveContainer>
             <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                Flow per minute; the shaded part is the alert ({clock(start)} – {clock(end)}).
+                Flow per minute. Dashed line: alert raised ({clock(start)}).
+                {since != null && ` Shaded: water running non-stop from ${clock(since)} until the alert.`}
             </p>
             <ul className="mt-2 space-y-1.5">
                 {reasons(data.type, f).map(({ Icon, text }) => (
