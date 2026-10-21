@@ -185,8 +185,10 @@ export const scoreDevice = async (baseUrl, device) => {
             open.message = actionMessage();
             await open.save();
             emitAlertChanged("active", { userId: device.owner, deviceId: device._id });
-        } else if (!v.active && open && !VALVE_ACTIONS.includes(open.autoAction) && open.userFeedback?.label !== "real-leak") {
-            // (A leak the household confirmed stays open until someone marks it fixed.)
+        } else if (!v.active && open && !VALVE_ACTIONS.includes(open.autoAction) && open.userFeedback?.label !== "real-leak" && !(v.score >= v.threshold)) {
+            // (A leak the household confirmed stays open until someone marks it fixed. A score still at or
+            // above the threshold means the leak is still there: a short dip restarted the alarm's
+            // persistence count, so the alarm reads inactive for a few minutes mid-leak.)
             open.status = "resolved";
             open.resolvedAt = new Date();
             open.autoAction = "auto-resolved";
